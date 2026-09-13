@@ -1,0 +1,74 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  username     String             @unique
+  passwordHash String
+  role         String             @default("USER")
+  isActive     Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  assignments  VMUserAssignment[]
+  refreshTokens RefreshToken[]
+  auditLogs    AuditLog[]
+}
+
+model VM {
+  id                String             @id @default(uuid())
+  name              String
+  description       String?
+  protocol          String             @default("RDP")
+  hostname          String
+  port              Int                @default(3389)
+  username          String
+  encryptedPassword String
+  domain            String?
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  assignments       VMUserAssignment[]
+}
+
+model VMUserAssignment {
+  id        String   @id @default(uuid())
+  vmId      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  vm   VM   @relation(fields: [vmId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([vmId, userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  userName  String?
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

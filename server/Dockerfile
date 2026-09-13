@@ -1,8 +1,16 @@
 FROM node:20-alpine
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
-COPY package*.json ./
+
+COPY shared ./shared
+COPY server ./server
+
+WORKDIR /app/server
+
 RUN npm install
-COPY . .
+RUN npx prisma generate
 RUN npm run build
+
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/server/src/index.js"]
