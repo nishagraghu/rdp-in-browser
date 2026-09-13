@@ -26,3 +26,16 @@ services:
       - "5173:80"
     depends_on:
       - server
+
+  rdp-server:
+    build:
+      context: ./test-rdp
+    container_name: test-rdp
+    restart: unless-stopped
+    environment:
+      RDP_USERNAME: testuser
+      RDP_PASSWORD: testpass
+      TZ: Asia/Kolkata
+    ports:
+      - "3389:3389"
+    shm_size: "1gb"
