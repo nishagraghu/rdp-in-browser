@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { hashPassword } from '../utils/password';
 import { encryptVMPassword } from '../utils/encryption';
-import { UserRole, VmProtocol } from '../../../shared/src';
+import { UserRole, VmProtocol } from '../shared';
 
 export async function autoSeedDatabase(): Promise<void> {
   try {
@@ -65,3 +65,4 @@ export async function autoSeedDatabase(): Promise<void> {
     console.error('❌ Auto-seed failed:', error);
   }
 }
+

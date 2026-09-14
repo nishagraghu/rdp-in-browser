@@ -12,6 +12,7 @@ import { UserDashboard } from './features/user/UserDashboard';
 import { ProfilePage } from './features/user/ProfilePage';
 import { AdminDashboard } from './features/admin/AdminDashboard';
 import { UserManagement } from './features/admin/UserManagement';
+import { Toaster } from 'sonner';
 import { VmManagement } from './features/admin/VmManagement';
 import { AssignmentsPage } from './features/admin/AssignmentsPage';
 import { RemoteDesktopView } from './features/remote/RemoteDesktopView';
@@ -27,8 +28,10 @@ export default function App() {
   }, [dispatch]);
 
   return (
-    <BrowserRouter>
-      <Routes>
+    <>
+      <Toaster position="top-right" richColors />
+      <BrowserRouter>
+        <Routes>
         {/* Public Routes */}
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -74,6 +77,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </>
   );
 }

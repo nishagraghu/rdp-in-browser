@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma';
-import { AuditAction } from '../../../shared/src/index';
+import { AuditAction } from '../shared';
 
 export async function createAuditLog(params: {
   userId?: string | null;
@@ -22,3 +22,4 @@ export async function createAuditLog(params: {
     console.error('Failed to write audit log:', err);
   }
 }
+

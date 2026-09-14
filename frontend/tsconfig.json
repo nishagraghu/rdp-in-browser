@@ -17,8 +17,9 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@rdp/shared": ["../shared/src"]
+      "@/*": ["./src/*"],
+      "@rdp/shared": ["./src/shared"]
     }
   },
-  "include": ["src", "../shared/src"]
+  "include": ["src"]
 }

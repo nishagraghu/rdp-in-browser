@@ -7,6 +7,7 @@ RUN apt-get update \
         dbus-x11 \
         xfce4 \
         xrdp \
+        fuse \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

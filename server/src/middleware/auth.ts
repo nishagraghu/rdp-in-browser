@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, TokenPayload } from '../utils/jwt';
-import { hasPermission, PermissionType, UserRole } from '../../../shared/src/index';
+import { hasPermission, PermissionType, UserRole } from '../shared';
 
 export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
@@ -58,3 +58,4 @@ export function requirePermission(permission: PermissionType) {
     next();
   };
 }
+

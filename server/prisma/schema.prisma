@@ -37,6 +37,26 @@ model VM {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   assignments       VMUserAssignment[]
+
+  // Device Redirection (Audio)
+  supportAudioInConsole Boolean @default(false)
+  disableAudio          Boolean @default(false)
+  enableAudioInput      Boolean @default(false)
+
+  // Device Redirection (Printing)
+  enablePrinting        Boolean @default(false)
+  printerName           String?
+
+  // Device Redirection (Drive)
+  enableDrive           Boolean @default(false)
+  driveName             String?
+  disableFileDownload   Boolean @default(false)
+  disableFileUpload     Boolean @default(false)
+  drivePath             String?
+  createDrivePath       Boolean @default(false)
+  
+  // Channels
+  staticChannelNames    String?
 }
 
 model VMUserAssignment {

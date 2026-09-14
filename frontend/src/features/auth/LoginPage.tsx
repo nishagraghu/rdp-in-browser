@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
 import { loginUser } from '../../store/authSlice';
-import { Monitor, Lock, User, ArrowRight, ShieldCheck, UserCheck } from 'lucide-react';
+import { ShieldCheck, UserCheck, Monitor } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const LoginPage: React.FC = () => {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -33,107 +37,113 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-2">
-          <div className="mx-auto w-12 h-12 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl flex items-center justify-center">
-            <Monitor className="w-6 h-6" />
+    <div className="flex min-h-screen w-full items-center justify-center bg-muted/20 px-4">
+      <Card className="w-full max-w-sm border-border/60 shadow-sm">
+        <CardHeader className="space-y-2 text-center pb-6">
+          <div className="flex justify-center mb-2">
+             <div className="h-10 w-10 rounded-md bg-primary/5 border flex items-center justify-center text-primary">
+               <Monitor className="h-5 w-5" />
+             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-          <p className="text-sm text-slate-400">Sign in to your Remote Desktop Portal</p>
-        </div>
+          <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
+          <CardDescription className="text-muted-foreground text-sm">
+            Please sign in to your account
+          </CardDescription>
+        </CardHeader>
 
-        {successMessage && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-sm">
-            {successMessage}
+        <CardContent>
+          {successMessage && (
+            <Alert variant="default" className="bg-emerald-50 text-emerald-700 border-emerald-200 mb-4 py-3">
+              <AlertDescription className="text-xs">{successMessage}</AlertDescription>
+            </Alert>
+          )}
+
+          {error && (
+            <Alert variant="destructive" className="mb-4 py-3">
+              <AlertDescription className="text-xs">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                id="email"
+                type="text"
+                placeholder="Email address"
+                required
+                value={usernameOrEmail}
+                onChange={(e) => setUsernameOrEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Input
+                id="password"
+                type="password"
+                placeholder="Password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <div className="flex justify-end mt-1">
+                <Link
+                  to="#"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'Signing In...' : 'Sign in'}
+            </Button>
+          </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/60" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                or continue with
+              </span>
+            </div>
           </div>
-        )}
 
-        {error && (
-          <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Quick Demo Access Box */}
-        <div className="p-4 bg-slate-800/60 border border-slate-700/60 rounded-xl space-y-3">
-          <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider text-center">
-            Quick One-Click Demo Access
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
+          {/* Social / Demo logins */}
+          <div className="grid grid-cols-2 gap-3">
+            <Button 
+              variant="outline" 
+              className="font-normal border-border/60"
               onClick={() => {
                 setUsernameOrEmail('admin');
                 setPassword('admin123');
                 handleLogin('admin', 'admin123');
               }}
-              className="py-2.5 px-3 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 rounded-lg text-xs font-medium flex items-center justify-center space-x-1.5 transition-all"
             >
-              <ShieldCheck className="w-4 h-4 text-sky-400" />
-              <span>Login Admin</span>
-            </button>
-
-            <button
-              type="button"
+              <ShieldCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Admin
+            </Button>
+            <Button 
+              variant="outline"
+              className="font-normal border-border/60"
               onClick={() => {
                 setUsernameOrEmail('guest');
                 setPassword('guest123');
                 handleLogin('guest', 'guest123');
               }}
-              className="py-2.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-medium flex items-center justify-center space-x-1.5 transition-all"
             >
-              <UserCheck className="w-4 h-4 text-indigo-400" />
-              <span>Login Guest</span>
-            </button>
-          </div>
-          <div className="text-[11px] text-slate-400 text-center space-y-0.5 pt-1 border-t border-slate-700/40">
-            <div>🔑 Admin: <span className="font-mono text-white">admin</span> / <span className="font-mono text-white">admin123</span></div>
-            <div>👤 Guest: <span className="font-mono text-white">guest</span> / <span className="font-mono text-white">guest123</span></div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">USERNAME OR EMAIL</label>
-            <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-              <input
-                type="text"
-                required
-                value={usernameOrEmail}
-                onChange={(e) => setUsernameOrEmail(e.target.value)}
-                placeholder="username or email@company.com"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500"
-              />
-            </div>
+              <UserCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Guest
+            </Button>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">PASSWORD</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500"
-              />
-            </div>
+          <div className="mt-6 text-center text-xs">
+            <span className="text-muted-foreground">Don't have an account? </span>
+            <Link to="#" className="font-medium hover:underline text-foreground">
+              Sign up
+            </Link>
           </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-lg shadow-lg shadow-sky-600/30 flex items-center justify-center space-x-2 transition-all disabled:opacity-50 mt-6"
-          >
-            <span>{isLoading ? 'Signing In...' : 'Sign In'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
+

@@ -26,6 +26,21 @@ export interface VmDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  
+  // Device Redirection
+  supportAudioInConsole?: boolean;
+  disableAudio?: boolean;
+  enableAudioInput?: boolean;
+  enablePrinting?: boolean;
+  printerName?: string | null;
+  enableDrive?: boolean;
+  driveName?: string | null;
+  disableFileDownload?: boolean;
+  disableFileUpload?: boolean;
+  drivePath?: string | null;
+  createDrivePath?: boolean;
+  staticChannelNames?: string | null;
+
   assignedUsers?: UserDto[];
   _count?: {
     assignments: number;

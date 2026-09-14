@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
 import { fetchVms } from '../../store/vmSlice';
-import { Badge } from '../../components/Badge';
 import { Monitor, Play, Server } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export const UserDashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -23,11 +26,11 @@ export const UserDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">My Remote Desktops</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Welcome back, <span className="text-sky-400 font-semibold">{user?.name}</span>. Select a virtual machine to launch an RDP session.
+          <h1 className="text-2xl font-bold tracking-tight">My Remote Desktops</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Welcome back, <span className="text-primary font-semibold">{user?.name}</span>. Select a virtual machine to launch an RDP session.
           </p>
         </div>
       </div>
@@ -35,70 +38,69 @@ export const UserDashboard: React.FC = () => {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 bg-slate-900/50 border border-slate-800 rounded-2xl animate-pulse"></div>
+            <Skeleton key={i} className="h-48 rounded-2xl" />
           ))}
         </div>
       ) : vms.length === 0 ? (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
-          <div className="w-16 h-16 bg-slate-800 text-slate-500 rounded-2xl flex items-center justify-center mx-auto border border-slate-700">
-            <Monitor className="w-8 h-8" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">No Assigned Remote Desktops</h3>
-            <p className="text-sm text-slate-400 mt-1 max-w-md mx-auto">
-              You currently do not have access to any remote desktop instances. Please contact your system administrator to assign VMs to your account.
-            </p>
-          </div>
-        </div>
+        <Card>
+          <CardContent className="p-12 text-center space-y-4">
+            <div className="w-16 h-16 bg-muted text-muted-foreground rounded-2xl flex items-center justify-center mx-auto border border-border">
+              <Monitor className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">No Assigned Remote Desktops</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                You currently do not have access to any remote desktop instances. Please contact your system administrator to assign VMs to your account.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {vms.map((vm) => (
-            <div
-              key={vm.id}
-              className="bg-slate-900 border border-slate-800 hover:border-sky-500/50 transition-all duration-200 rounded-2xl p-6 flex flex-col justify-between shadow-xl group hover:shadow-sky-500/5"
-            >
-              <div className="space-y-4">
+            <Card key={vm.id} className="flex flex-col justify-between hover:border-primary/50 transition-all duration-200 shadow-sm group hover:shadow-primary/5">
+              <CardContent className="p-6 space-y-4 flex flex-col flex-1">
                 <div className="flex items-start justify-between">
-                  <div className="p-3 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl group-hover:scale-105 transition-transform">
+                  <div className="p-3 bg-primary/10 text-primary rounded-xl group-hover:scale-105 transition-transform">
                     <Server className="w-6 h-6" />
                   </div>
-                  <Badge variant={vm.isActive ? 'success' : 'danger'}>
+                  <Badge variant={vm.isActive ? 'default' : 'destructive'} className={vm.isActive ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
                     {vm.isActive ? 'Active' : 'Disabled'}
                   </Badge>
                 </div>
 
-                <div>
-                  <h3 className="text-lg font-bold text-white group-hover:text-sky-400 transition-colors">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold group-hover:text-primary transition-colors">
                     {vm.name}
                   </h3>
-                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                     {vm.description || 'Remote Windows Desktop session'}
                   </p>
                 </div>
 
-                <div className="space-y-1.5 pt-2 border-t border-slate-800/60 text-xs text-slate-300">
+                <div className="space-y-1.5 pt-4 border-t text-xs text-muted-foreground">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Protocol:</span>
-                    <span className="font-mono font-medium text-sky-400">{vm.protocol}</span>
+                    <span>Protocol:</span>
+                    <span className="font-mono font-medium text-primary">{vm.protocol}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Host:</span>
+                    <span>Host:</span>
                     <span className="font-mono">{vm.hostname}:{vm.port}</span>
                   </div>
                 </div>
-              </div>
 
-              <div className="pt-6">
-                <button
-                  onClick={() => handleConnect(vm.id)}
-                  disabled={!vm.isActive}
-                  className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl shadow-lg shadow-sky-600/20 flex items-center justify-center space-x-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group-hover:shadow-sky-500/30"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>CONNECT</span>
-                </button>
-              </div>
-            </div>
+                <div className="pt-4">
+                  <Button
+                    onClick={() => handleConnect(vm.id)}
+                    disabled={!vm.isActive}
+                    className="w-full font-semibold shadow-lg shadow-primary/20 flex items-center justify-center space-x-2 transition-all group-hover:shadow-primary/30"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>CONNECT</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

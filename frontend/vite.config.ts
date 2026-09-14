@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@rdp/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+      '@': path.resolve(__dirname, './src'),
+      '@rdp/shared': path.resolve(__dirname, './src/shared/index.ts'),
     },
   },
   server: {

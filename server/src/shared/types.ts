@@ -1,0 +1,94 @@
+import { UserRole, VmProtocol, AuditAction } from './enums';
+
+export interface UserDto {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    assignments: number;
+  };
+}
+
+export interface VmDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  protocol: VmProtocol;
+  hostname: string;
+  port: number;
+  username: string;
+  domain?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  
+  // Device Redirection
+  supportAudioInConsole?: boolean;
+  disableAudio?: boolean;
+  enableAudioInput?: boolean;
+  enablePrinting?: boolean;
+  printerName?: string | null;
+  enableDrive?: boolean;
+  driveName?: string | null;
+  disableFileDownload?: boolean;
+  disableFileUpload?: boolean;
+  drivePath?: string | null;
+  createDrivePath?: boolean;
+  staticChannelNames?: string | null;
+
+  assignedUsers?: UserDto[];
+  _count?: {
+    assignments: number;
+  };
+}
+
+export interface VMUserAssignmentDto {
+  id: string;
+  vmId: string;
+  userId: string;
+  createdAt: string;
+  vm?: VmDto;
+  user?: UserDto;
+}
+
+export interface AuditLogDto {
+  id: string;
+  userId?: string | null;
+  userName?: string | null;
+  action: AuditAction;
+  details?: string | null;
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: string;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+}
+
+export interface LoginResponseData {
+  user: UserDto;
+  accessToken: string;
+}
+
+export interface ConnectSessionResponse {
+  token: string;
+  wsUrl: string;
+  vm: {
+    id: string;
+    name: string;
+    protocol: VmProtocol;
+    hostname: string;
+  };
+}

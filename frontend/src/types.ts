@@ -17,8 +17,21 @@ export interface ConnectParams {
   enableDesktopComposition: boolean;
   enableFullWindowDrag: boolean;
   enableMenuAnimations: boolean;
-  disableBitmapCaching: boolean;
-  disableAudio: boolean;
+  disableBitmapCaching?: boolean;
+  disableAudio?: boolean;
+  
+  // Device Redirection
+  supportAudioInConsole?: boolean;
+  enableAudioInput?: boolean;
+  enablePrinting?: boolean;
+  printerName?: string;
+  enableDrive?: boolean;
+  driveName?: string;
+  disableFileDownload?: boolean;
+  disableFileUpload?: boolean;
+  drivePath?: string;
+  createDrivePath?: boolean;
+  staticChannelNames?: string;
 }
 
 export interface RDPSession {

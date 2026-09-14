@@ -4,36 +4,22 @@ import { AppDispatch, RootState } from '../../store';
 import { fetchVms, createVm, updateVm, deleteVm } from '../../store/vmSlice';
 import { fetchUsers } from '../../store/userSlice';
 import api from '../../api/client';
-import { Modal } from '../../components/Modal';
-import { Badge } from '../../components/Badge';
 import { VmDto, VmProtocol, UserDto } from '@rdp/shared';
 import { 
-  Search, 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  Wifi, 
-  Users, 
-  Server, 
-  Check, 
-  AlertCircle, 
-  Eye, 
-  EyeOff,
-  Globe,
-  Lock,
-  UserCheck
+  Search, Plus, Edit2, Trash2, Wifi, Users, Server, Check, 
+  AlertCircle, Eye, EyeOff, Globe, Lock, UserCheck
 } from 'lucide-react';
-
-interface VmFormState {
-  name: string;
-  description: string;
-  protocol: VmProtocol;
-  hostname: string;
-  port: string;
-  username: string;
-  password: string;
-  domain: string;
-}
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useFormik } from 'formik';
+import * as yup from 'yup';
 
 export const VmManagement: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -53,17 +39,6 @@ export const VmManagement: React.FC = () => {
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState<string | null>(null);
 
-  // Form states
-  const [formData, setFormData] = useState<VmFormState>({
-    name: '',
-    description: '',
-    protocol: VmProtocol.RDP,
-    hostname: '',
-    port: '3389',
-    username: '',
-    password: '',
-    domain: '',
-  });
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -85,8 +60,8 @@ export const VmManagement: React.FC = () => {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
+  const formik = useFormik({
+    initialValues: {
       name: '',
       description: '',
       protocol: VmProtocol.RDP,
@@ -95,7 +70,85 @@ export const VmManagement: React.FC = () => {
       username: '',
       password: '',
       domain: '',
-    });
+      supportAudioInConsole: false,
+      disableAudio: false,
+      enableAudioInput: false,
+      enablePrinting: false,
+      printerName: '',
+      enableDrive: false,
+      driveName: '',
+      disableFileDownload: false,
+      disableFileUpload: false,
+      drivePath: '',
+      createDrivePath: false,
+      staticChannelNames: '',
+    },
+    validationSchema: yup.object({
+      name: yup.string().required('VM Display Name is required'),
+      hostname: yup.string().required('Hostname/IP is required'),
+      port: yup.number().typeError('Must be a number').min(1).max(65535).required('Port is required'),
+      username: yup.string().required('Username is required'),
+      password: yup.string().test('is-required', 'Password is required', function(value) {
+        if (!editingVm && !value) return false;
+        return true;
+      }),
+    }),
+    onSubmit: async (values) => {
+      setModalError(null);
+      const parsedPort = parseInt(values.port, 10) || parseInt(getDefaultPort(values.protocol), 10);
+      
+      const payload: Record<string, any> = {
+        name: values.name.trim(),
+        description: values.description.trim() || undefined,
+        protocol: values.protocol,
+        hostname: values.hostname.trim(),
+        port: parsedPort,
+        username: values.username.trim(),
+        domain: values.domain.trim() || undefined,
+        supportAudioInConsole: values.supportAudioInConsole,
+        disableAudio: values.disableAudio,
+        enableAudioInput: values.enableAudioInput,
+        enablePrinting: values.enablePrinting,
+        printerName: values.printerName.trim() || undefined,
+        enableDrive: values.enableDrive,
+        driveName: values.driveName.trim() || undefined,
+        disableFileDownload: values.disableFileDownload,
+        disableFileUpload: values.disableFileUpload,
+        drivePath: values.drivePath.trim() || undefined,
+        createDrivePath: values.createDrivePath,
+        staticChannelNames: values.staticChannelNames.trim() || undefined,
+      };
+
+      if (values.password) {
+        payload.password = values.password;
+      }
+
+      if (editingVm) {
+        const res = await dispatch(updateVm({ id: editingVm.id, data: payload }));
+        if (updateVm.fulfilled.match(res)) {
+          try {
+            await api.put(`/vms/${editingVm.id}/users`, { userIds: selectedUserIds });
+          } catch {}
+          dispatch(fetchVms());
+          setEditingVm(null);
+        } else {
+          setModalError((res.payload as string) || 'Failed to update VM');
+        }
+      } else {
+        payload.assignedUserIds = selectedUserIds;
+        const res = await dispatch(createVm(payload));
+        if (createVm.fulfilled.match(res)) {
+          dispatch(fetchVms());
+          setIsAddModalOpen(false);
+        } else {
+          setModalError((res.payload as string) || 'Failed to create VM');
+        }
+      }
+    }
+  });
+
+  const resetForm = () => {
+    formik.resetForm();
     setSelectedUserIds([]);
     setShowPassword(false);
     setModalError(null);
@@ -108,15 +161,27 @@ export const VmManagement: React.FC = () => {
 
   const handleOpenEdit = (vm: VmDto) => {
     setEditingVm(vm);
-    setFormData({
+    formik.setValues({
       name: vm.name || '',
       description: vm.description || '',
       protocol: vm.protocol || VmProtocol.RDP,
       hostname: vm.hostname || '',
       port: String(vm.port || 3389),
       username: vm.username || '',
-      password: '', // Never populate existing encrypted password
+      password: '',
       domain: vm.domain || '',
+      supportAudioInConsole: !!vm.supportAudioInConsole,
+      disableAudio: !!vm.disableAudio,
+      enableAudioInput: !!vm.enableAudioInput,
+      enablePrinting: !!vm.enablePrinting,
+      printerName: vm.printerName || '',
+      enableDrive: !!vm.enableDrive,
+      driveName: vm.driveName || '',
+      disableFileDownload: !!vm.disableFileDownload,
+      disableFileUpload: !!vm.disableFileUpload,
+      drivePath: vm.drivePath || '',
+      createDrivePath: !!vm.createDrivePath,
+      staticChannelNames: vm.staticChannelNames || '',
     });
     const assignedIds = vm.assignedUsers?.map((u: UserDto) => u.id) || [];
     setSelectedUserIds(assignedIds);
@@ -131,74 +196,12 @@ export const VmManagement: React.FC = () => {
   };
 
   const handleProtocolChange = (newProtocol: VmProtocol) => {
-    // If current port is one of the standard defaults, auto-switch port
-    const currentPort = formData.port;
+    const currentPort = formik.values.port;
     if (['3389', '5900', '22', ''].includes(currentPort)) {
-      setFormData(prev => ({
-        ...prev,
-        protocol: newProtocol,
-        port: getDefaultPort(newProtocol),
-      }));
+      formik.setFieldValue('protocol', newProtocol);
+      formik.setFieldValue('port', getDefaultPort(newProtocol));
     } else {
-      setFormData(prev => ({
-        ...prev,
-        protocol: newProtocol,
-      }));
-    }
-  };
-
-  const handleSaveVm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalError(null);
-
-    const parsedPort = parseInt(formData.port, 10) || parseInt(getDefaultPort(formData.protocol), 10);
-
-    if (editingVm) {
-      const payload: Record<string, unknown> = {
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        protocol: formData.protocol,
-        hostname: formData.hostname.trim(),
-        port: parsedPort,
-        username: formData.username.trim(),
-        domain: formData.domain.trim() || null,
-      };
-      if (formData.password) {
-        payload.password = formData.password;
-      }
-
-      const res = await dispatch(updateVm({ id: editingVm.id, data: payload }));
-      if (updateVm.fulfilled.match(res)) {
-        // Sync user assignments
-        try {
-          await api.put(`/vms/${editingVm.id}/users`, { userIds: selectedUserIds });
-        } catch {
-          // Ignore assignment update error
-        }
-        dispatch(fetchVms());
-        setEditingVm(null);
-      } else {
-        setModalError((res.payload as string) || 'Failed to update VM');
-      }
-    } else {
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description.trim() || undefined,
-        protocol: formData.protocol,
-        hostname: formData.hostname.trim(),
-        port: parsedPort,
-        username: formData.username.trim(),
-        password: formData.password,
-        domain: formData.domain.trim() || undefined,
-        assignedUserIds: selectedUserIds,
-      };
-      const res = await dispatch(createVm(payload));
-      if (createVm.fulfilled.match(res)) {
-        dispatch(fetchVms());
-        setIsAddModalOpen(false);
-      } else {
-        setModalError((res.payload as string) || 'Failed to create VM');
-      }
+      formik.setFieldValue('protocol', newProtocol);
     }
   };
 
@@ -257,432 +260,500 @@ export const VmManagement: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-5 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-5 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">VM Management</h1>
-          <p className="text-sm text-slate-400 mt-1">Configure virtual machines, target host RDP settings, and user access control</p>
+          <h1 className="text-2xl font-bold tracking-tight">VM Management</h1>
+          <p className="text-sm text-muted-foreground mt-1">Configure virtual machines, target host RDP settings, and user access control</p>
         </div>
-        <button
-          onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl shadow-lg shadow-sky-600/20 flex items-center space-x-2 transition-all cursor-pointer"
-        >
+        <Button onClick={handleOpenAdd} className="gap-2">
           <Plus className="w-4 h-4" />
-          <span>Add New VM</span>
-        </button>
+          Add New VM
+        </Button>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by name, hostname, or description..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-sky-500"
-          />
-        </div>
-
-        <div className="flex items-center space-x-2 w-full sm:w-auto">
-          <span className="text-xs text-slate-400">Protocol:</span>
-          <select
-            value={protocolFilter}
-            onChange={(e) => setProtocolFilter(e.target.value)}
-            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500"
-          >
-            <option value="ALL">All Protocols</option>
-            <option value="RDP">RDP</option>
-            <option value="VNC">VNC</option>
-            <option value="SSH">SSH</option>
-          </select>
-        </div>
-      </div>
-
-      {/* VMs Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        {isLoading ? (
-          <div className="p-8 text-center text-slate-500">Loading virtual machines...</div>
-        ) : filteredVms.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <Server className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-            <p className="font-semibold text-slate-400">No virtual machines configured yet</p>
-            <p className="text-xs text-slate-500 mt-1">Click "Add New VM" above to create your first remote desktop connection</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="text-xs uppercase bg-slate-800/60 text-slate-400 border-b border-slate-700/60">
-                <tr>
-                  <th className="py-3.5 px-4">VM Name</th>
-                  <th className="py-3.5 px-4">Host / Port</th>
-                  <th className="py-3.5 px-4">Protocol</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Assigned Users</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {filteredVms.map((vm) => (
-                  <tr key={vm.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl">
-                          <Server className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white">{vm.name}</div>
-                          <div className="text-xs text-slate-400">{vm.description || 'No description'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-xs text-slate-300">
-                      {vm.hostname}:{vm.port}
-                      {vm.domain && <span className="block text-[10px] text-slate-500">Domain: {vm.domain}</span>}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <Badge variant="info">{vm.protocol}</Badge>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <button
-                        onClick={() => handleToggleActive(vm)}
-                        className="flex items-center space-x-1.5 focus:outline-none cursor-pointer"
-                        title="Click to toggle active status"
-                      >
-                        <Badge variant={vm.isActive ? 'success' : 'danger'}>
-                          {vm.isActive ? 'Active' : 'Disabled'}
-                        </Badge>
-                      </button>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <button
-                        onClick={() => handleOpenAssign(vm)}
-                        className="flex items-center space-x-1.5 text-xs text-sky-400 hover:text-sky-300 bg-sky-500/10 px-2.5 py-1 rounded-lg border border-sky-500/20 cursor-pointer"
-                      >
-                        <Users className="w-3.5 h-3.5" />
-                        <span>{vm.assignedUsers?.length || 0} Users</span>
-                      </button>
-                    </td>
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      <button
-                        onClick={() => handleTestConnection(vm)}
-                        disabled={isTesting === vm.id}
-                        className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Test Connection"
-                      >
-                        <Wifi className={`w-4 h-4 ${isTesting === vm.id ? 'animate-pulse text-emerald-400' : ''}`} />
-                      </button>
-                      <button
-                        onClick={() => handleOpenEdit(vm)}
-                        className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Edit VM"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteVm(vm.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Delete VM"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Connection Test Toast */}
-      {testResult && (
-        <div className={`p-4 rounded-xl border flex items-center justify-between text-sm ${
-          testResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-        }`}>
-          <div className="flex items-center space-x-2">
-            {testResult.success ? <Check className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-            <span>{testResult.message}</span>
-          </div>
-          <button onClick={() => setTestResult(null)} className="text-xs underline font-semibold cursor-pointer">Dismiss</button>
-        </div>
-      )}
-
-      {/* Add / Edit VM Modal */}
-      <Modal
-        isOpen={isAddModalOpen || !!editingVm}
-        onClose={() => { setIsAddModalOpen(false); setEditingVm(null); }}
-        title={editingVm ? `Edit VM: ${editingVm.name}` : 'Add New Virtual Machine'}
-        maxWidth="xl"
-      >
-        <form onSubmit={handleSaveVm} className="space-y-4">
-          {modalError && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{modalError}</span>
-            </div>
-          )}
-
-          {/* Section 1: General Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                VM DISPLAY NAME <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Windows 11 Workstation"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                PROTOCOL <span className="text-rose-400">*</span>
-              </label>
-              <select
-                value={formData.protocol}
-                onChange={(e) => handleProtocolChange(e.target.value as VmProtocol)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              >
-                <option value="RDP">RDP (Remote Desktop Protocol)</option>
-                <option value="VNC">VNC</option>
-                <option value="SSH">SSH</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">DESCRIPTION (OPTIONAL)</label>
-            <input
+      <Card>
+        <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
               type="text"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="e.g. Development machine with Visual Studio & Docker"
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, hostname..."
+              className="pl-9"
             />
           </div>
 
-          {/* Section 2: Network / Host */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                <Globe className="w-3.5 h-3.5 text-slate-400" />
-                <span>HOSTNAME / IP ADDRESS <span className="text-rose-400">*</span></span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.hostname}
-                onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
-                placeholder="e.g. 192.168.1.100 or host.docker.internal"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                PORT <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                required
-                value={formData.port}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, '');
-                  setFormData({ ...formData, port: val });
-                }}
-                placeholder={getDefaultPort(formData.protocol)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono text-xs"
-              />
-            </div>
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Protocol:</span>
+            <select
+              value={protocolFilter}
+              onChange={(e) => setProtocolFilter(e.target.value)}
+              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="ALL">All Protocols</option>
+              <option value="RDP">RDP</option>
+              <option value="VNC">VNC</option>
+              <option value="SSH">SSH</option>
+            </select>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Section 3: Credentials */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                <span>{formData.protocol} USERNAME <span className="text-rose-400">*</span></span>
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Administrator"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              />
+      {/* Connection Test Toast */}
+      {testResult && (
+        <Alert variant={testResult.success ? 'default' : 'destructive'} className={testResult.success ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/10' : ''}>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-2">
+              {testResult.success ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              <AlertDescription>{testResult.message}</AlertDescription>
             </div>
+            <Button variant="link" size="sm" onClick={() => setTestResult(null)} className="h-auto p-0">Dismiss</Button>
+          </div>
+        </Alert>
+      )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center space-x-1">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>
-                  {editingVm ? `${formData.protocol} PASSWORD (OPTIONAL)` : `${formData.protocol} PASSWORD`}
-                  {!editingVm && <span className="text-rose-400"> *</span>}
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required={!editingVm}
-                  autoComplete="new-password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={editingVm ? 'Unchanged' : 'Enter password'}
-                  className="w-full pl-3 pr-10 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+      {/* VMs Table */}
+      <Card className="overflow-hidden">
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">Loading virtual machines...</div>
+        ) : filteredVms.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
+            <Server className="w-12 h-12 mb-3 text-muted-foreground/50" />
+            <p className="font-semibold">No virtual machines configured yet</p>
+            <p className="text-sm mt-1">Click "Add New VM" above to create your first remote desktop connection</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>VM Name</TableHead>
+                  <TableHead>Host / Port</TableHead>
+                  <TableHead>Protocol</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assigned Users</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredVms.map((vm) => (
+                  <TableRow key={vm.id}>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-primary/10 text-primary rounded-md">
+                          <Server className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-semibold">{vm.name}</div>
+                          <div className="text-xs text-muted-foreground">{vm.description || 'No description'}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {vm.hostname}:{vm.port}
+                      {vm.domain && <span className="block text-[10px] text-muted-foreground mt-0.5">Domain: {vm.domain}</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{vm.protocol}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => handleToggleActive(vm)}
+                        className="flex items-center focus:outline-none cursor-pointer"
+                        title="Click to toggle active status"
+                      >
+                        <Badge variant={vm.isActive ? 'default' : 'secondary'} className={vm.isActive ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
+                          {vm.isActive ? 'Active' : 'Disabled'}
+                        </Badge>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleOpenAssign(vm)}
+                        className="h-8 text-xs gap-1.5"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        {vm.assignedUsers?.length || 0} Users
+                      </Button>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleTestConnection(vm)}
+                          disabled={isTesting === vm.id}
+                          title="Test Connection"
+                        >
+                          <Wifi className={`w-4 h-4 ${isTesting === vm.id ? 'animate-pulse text-emerald-500' : ''}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenEdit(vm)}
+                          title="Edit VM"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteVm(vm.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          title="Delete VM"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Card>
+
+      {/* Add / Edit VM Dialog */}
+      <Dialog open={isAddModalOpen || !!editingVm} onOpenChange={(open) => { if(!open){ setIsAddModalOpen(false); setEditingVm(null); }}}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingVm ? `Edit VM: ${editingVm.name}` : 'Add New Virtual Machine'}</DialogTitle>
+            <DialogDescription>
+              Configure the connection details for the remote host.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={formik.handleSubmit} className="space-y-4 py-4">
+            {modalError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{modalError}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">VM Display Name <span className="text-destructive">*</span></Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={formik.values.name}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  placeholder="e.g. Windows 11 Workstation"
+                  className={formik.touched.name && formik.errors.name ? "border-destructive" : ""}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200 cursor-pointer"
-                  tabIndex={-1}
+                {formik.touched.name && formik.errors.name && (
+                  <div className="text-xs text-destructive">{formik.errors.name}</div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="protocol">Protocol <span className="text-destructive">*</span></Label>
+                <select
+                  id="protocol"
+                  name="protocol"
+                  value={formik.values.protocol}
+                  onChange={(e) => handleProtocolChange(e.target.value as VmProtocol)}
+                  onBlur={formik.handleBlur}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                  <option value="RDP">RDP (Remote Desktop Protocol)</option>
+                  <option value="VNC">VNC</option>
+                  <option value="SSH">SSH</option>
+                </select>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">DOMAIN (OPTIONAL)</label>
-              <input
-                type="text"
-                value={formData.domain}
-                onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                placeholder="WORKGROUP"
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+            <div className="space-y-2">
+              <Label htmlFor="description">Description (Optional)</Label>
+              <Input
+                id="description"
+                name="description"
+                value={formik.values.description}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                placeholder="e.g. Development machine with Visual Studio & Docker"
               />
             </div>
-          </div>
 
-          {/* Section 4: Assign Users Directly */}
-          <div className="pt-2 border-t border-slate-800">
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center space-x-1.5">
-              <UserCheck className="w-3.5 h-3.5 text-sky-400" />
-              <span>ASSIGN USERS TO THIS VM (OPTIONAL)</span>
-            </label>
-            <div className="max-h-36 overflow-y-auto divide-y divide-slate-800/80 border border-slate-700/80 rounded-xl p-2 bg-slate-900/80">
-              {users.length === 0 ? (
-                <div className="text-xs text-slate-500 p-2">No portal users available</div>
-              ) : (
-                users.map((u) => {
-                  const isChecked = selectedUserIds.includes(u.id);
-                  return (
-                    <label
-                      key={u.id}
-                      className="flex items-center justify-between p-2 hover:bg-slate-800/60 rounded-lg cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center space-x-2.5">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedUserIds([...selectedUserIds, u.id]);
-                            } else {
-                              setSelectedUserIds(selectedUserIds.filter((id) => id !== u.id));
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                        />
-                        <div>
-                          <span className="text-xs font-medium text-white">{u.name}</span>
-                          <span className="text-[11px] text-slate-400 ml-1.5">(@{u.username})</span>
-                        </div>
-                      </div>
-                      <Badge variant={u.role === 'ADMIN' ? 'warning' : 'info'}>
-                        {u.role}
-                      </Badge>
-                    </label>
-                  );
-                })
-              )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2 space-y-2">
+                <Label htmlFor="hostname" className="flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5" />
+                  Hostname / IP <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="hostname"
+                  name="hostname"
+                  value={formik.values.hostname}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  placeholder="e.g. 192.168.1.100"
+                  className={`font-mono text-xs ${formik.touched.hostname && formik.errors.hostname ? "border-destructive" : ""}`}
+                />
+                {formik.touched.hostname && formik.errors.hostname && (
+                  <div className="text-xs text-destructive">{formik.errors.hostname}</div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="port">Port <span className="text-destructive">*</span></Label>
+                <Input
+                  id="port"
+                  name="port"
+                  inputMode="numeric"
+                  value={formik.values.port}
+                  onChange={(e) => formik.setFieldValue('port', e.target.value.replace(/[^0-9]/g, ''))}
+                  onBlur={formik.handleBlur}
+                  placeholder={getDefaultPort(formik.values.protocol)}
+                  className={`font-mono text-xs ${formik.touched.port && formik.errors.port ? "border-destructive" : ""}`}
+                />
+                {formik.touched.port && formik.errors.port && (
+                  <div className="text-xs text-destructive">{formik.errors.port}</div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="pt-4 flex justify-end space-x-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => { setIsAddModalOpen(false); setEditingVm(null); }}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-lg text-sm cursor-pointer transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-600/20 cursor-pointer transition-colors"
-            >
-              {editingVm ? 'Save Changes' : 'Create VM'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">{formik.values.protocol} Username <span className="text-destructive">*</span></Label>
+                <Input
+                  id="username"
+                  name="username"
+                  autoComplete="off"
+                  value={formik.values.username}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  placeholder="Administrator"
+                  className={formik.touched.username && formik.errors.username ? "border-destructive" : ""}
+                />
+                {formik.touched.username && formik.errors.username && (
+                  <div className="text-xs text-destructive">{formik.errors.username}</div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5" />
+                  Password {!editingVm && <span className="text-destructive">*</span>}
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={formik.values.password}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    placeholder={editingVm ? 'Unchanged' : 'Enter password'}
+                    className={`pr-10 ${formik.touched.password && formik.errors.password ? "border-destructive" : ""}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {formik.touched.password && formik.errors.password && (
+                  <div className="text-xs text-destructive">{formik.errors.password}</div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="domain">Domain (Optional)</Label>
+                <Input
+                  id="domain"
+                  name="domain"
+                  value={formik.values.domain}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  placeholder="WORKGROUP"
+                />
+              </div>
+            </div>
 
-      {/* Assign Users Modal */}
-      <Modal
-        isOpen={!!assigningVm}
-        onClose={() => setAssigningVm(null)}
-        title={`Assign Users to ${assigningVm?.name}`}
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-400">
-            Select which portal users are authorized to view and connect to this remote desktop session.
-          </p>
+            <div className="pt-4 border-t space-y-4">
+              <Label className="flex items-center gap-1.5 mb-2 text-primary font-semibold">
+                Device Redirection
+              </Label>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Audio */}
+                <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                  <h4 className="text-sm font-medium mb-3">Audio</h4>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="supportAudioInConsole" checked={formik.values.supportAudioInConsole} onCheckedChange={c => formik.setFieldValue('supportAudioInConsole', !!c)} />
+                    <Label htmlFor="supportAudioInConsole" className="font-normal text-xs">Support audio in console</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="disableAudio" checked={formik.values.disableAudio} onCheckedChange={c => formik.setFieldValue('disableAudio', !!c)} />
+                    <Label htmlFor="disableAudio" className="font-normal text-xs">Disable audio</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="enableAudioInput" checked={formik.values.enableAudioInput} onCheckedChange={c => formik.setFieldValue('enableAudioInput', !!c)} />
+                    <Label htmlFor="enableAudioInput" className="font-normal text-xs">Enable audio input (microphone)</Label>
+                  </div>
+                </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-xl p-2 bg-slate-900">
-            {users.map((u) => {
-              const isChecked = selectedUserIds.includes(u.id);
-              return (
-                <label key={u.id} className="flex items-center justify-between p-3 hover:bg-slate-800/50 rounded-lg cursor-pointer transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedUserIds([...selectedUserIds, u.id]);
-                        } else {
-                          setSelectedUserIds(selectedUserIds.filter(id => id !== u.id));
-                        }
-                      }}
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-white">{u.name}</div>
-                      <div className="text-xs text-slate-400">@{u.username} ({u.role})</div>
+                {/* Printing */}
+                <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                  <h4 className="text-sm font-medium mb-3">Printing</h4>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="enablePrinting" checked={formik.values.enablePrinting} onCheckedChange={c => formik.setFieldValue('enablePrinting', !!c)} />
+                    <Label htmlFor="enablePrinting" className="font-normal text-xs">Enable printing</Label>
+                  </div>
+                  {formik.values.enablePrinting && (
+                    <div className="pl-6 mt-3 space-y-1">
+                      <Label htmlFor="printerName" className="text-xs">Redirected printer name</Label>
+                      <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Drive */}
+              <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                <h4 className="text-sm font-medium mb-3">Drive</h4>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', !!c)} />
+                  <Label htmlFor="enableDrive" className="font-normal text-xs">Enable drive</Label>
+                </div>
+                {formik.values.enableDrive && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6 mt-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="driveName" className="text-xs">Drive name</Label>
+                      <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="drivePath" className="text-xs">Drive path</Label>
+                      <Input id="drivePath" name="drivePath" value={formik.values.drivePath} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
+                    </div>
+                    <div className="flex flex-col gap-3 col-span-1 sm:col-span-2">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="disableFileDownload" checked={formik.values.disableFileDownload} onCheckedChange={c => formik.setFieldValue('disableFileDownload', !!c)} />
+                        <Label htmlFor="disableFileDownload" className="font-normal text-xs">Disable file download</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', !!c)} />
+                        <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable file upload</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="createDrivePath" checked={formik.values.createDrivePath} onCheckedChange={c => formik.setFieldValue('createDrivePath', !!c)} />
+                        <Label htmlFor="createDrivePath" className="font-normal text-xs">Automatically create drive</Label>
+                      </div>
                     </div>
                   </div>
-                  <Badge variant={u.isActive ? 'success' : 'danger'}>
-                    {u.isActive ? 'Active' : 'Disabled'}
-                  </Badge>
-                </label>
-              );
-            })}
-          </div>
+                )}
+              </div>
 
-          <div className="pt-4 flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => setAssigningVm(null)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-lg text-sm cursor-pointer transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveAssignments}
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-600/20 cursor-pointer transition-colors"
-            >
-              Save User Access
-            </button>
+              {/* Channels */}
+              <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                <Label htmlFor="staticChannelNames" className="text-sm font-medium">Static channel names</Label>
+                <Input id="staticChannelNames" name="staticChannelNames" value={formik.values.staticChannelNames} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-8 text-xs mt-1" />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <Label className="flex items-center gap-1.5 mb-2">
+                <UserCheck className="w-3.5 h-3.5 text-primary" />
+                Assign Users to this VM (Optional)
+              </Label>
+              <div className="max-h-36 overflow-y-auto divide-y border rounded-md p-1 bg-muted/20">
+                {users.length === 0 ? (
+                  <div className="text-xs text-muted-foreground p-2">No portal users available</div>
+                ) : (
+                  users.map((u) => {
+                    const isChecked = selectedUserIds.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-md cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <Checkbox 
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              if (checked) setSelectedUserIds([...selectedUserIds, u.id]);
+                              else setSelectedUserIds(selectedUserIds.filter(id => id !== u.id));
+                            }}
+                          />
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-sm font-medium">{u.name}</span>
+                            <span className="text-xs text-muted-foreground">@{u.username}</span>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px]">{u.role}</Badge>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => { setIsAddModalOpen(false); setEditingVm(null); }}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingVm ? 'Save Changes' : 'Create VM'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Users Dialog */}
+      <Dialog open={!!assigningVm} onOpenChange={(open) => { if(!open) setAssigningVm(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Assign Users to {assigningVm?.name}</DialogTitle>
+            <DialogDescription>
+              Select which portal users are authorized to view and connect to this remote desktop session.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="max-h-60 overflow-y-auto divide-y border rounded-md p-1 bg-muted/20">
+              {users.map((u) => {
+                const isChecked = selectedUserIds.includes(u.id);
+                return (
+                  <label key={u.id} className="flex items-center justify-between p-3 hover:bg-muted/50 rounded-md cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <Checkbox 
+                        checked={isChecked}
+                        onCheckedChange={(checked) => {
+                          if (checked) setSelectedUserIds([...selectedUserIds, u.id]);
+                          else setSelectedUserIds(selectedUserIds.filter(id => id !== u.id));
+                        }}
+                      />
+                      <div>
+                        <div className="text-sm font-medium">{u.name}</div>
+                        <div className="text-xs text-muted-foreground">@{u.username} ({u.role})</div>
+                      </div>
+                    </div>
+                    <Badge variant={u.isActive ? 'default' : 'secondary'} className={u.isActive ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
+                      {u.isActive ? 'Active' : 'Disabled'}
+                    </Badge>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </Modal>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssigningVm(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveAssignments}>
+              Save User Access
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+

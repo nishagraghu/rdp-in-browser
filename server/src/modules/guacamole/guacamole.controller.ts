@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { decryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction } from '../../../../shared/src/index';
+import { UserRole, AuditAction } from '../../shared';
 import { config } from '../../config/env';
 
 const KEY = Buffer.from(
@@ -19,29 +19,60 @@ function makeGuacamoleToken(params: {
   domain?: string | null;
   width?: number;
   height?: number;
+  supportAudioInConsole?: boolean;
+  disableAudio?: boolean;
+  enableAudioInput?: boolean;
+  enablePrinting?: boolean;
+  printerName?: string | null;
+  enableDrive?: boolean;
+  driveName?: string | null;
+  disableFileDownload?: boolean;
+  disableFileUpload?: boolean;
+  drivePath?: string | null;
+  createDrivePath?: boolean;
+  staticChannelNames?: string | null;
 }): string {
+  const settings: Record<string, string> = {
+    hostname: params.hostname,
+    port: String(params.port || 3389),
+    username: params.username || '',
+    password: params.password || '',
+    domain: params.domain || '',
+    width: String(params.width || 1920),
+    height: String(params.height || 1080),
+    dpi: '96',
+    'color-depth': '24',
+    security: 'any',
+    'ignore-cert': 'true',
+    'enable-wallpaper': 'true',
+    'enable-theming': 'true',
+    'enable-font-smoothing': 'true',
+    'enable-desktop-composition': 'true',
+    'resize-method': 'display-update',
+  };
+
+  if (params.disableAudio) settings['disable-audio'] = 'true';
+  if (params.enableAudioInput) settings['enable-audio-input'] = 'true';
+  if (params.enablePrinting) {
+    settings['enable-printing'] = 'true';
+    if (params.printerName) settings['printer-name'] = params.printerName;
+  }
+  if (params.enableDrive) {
+    settings['enable-drive'] = 'true';
+    if (params.driveName) settings['drive-name'] = params.driveName;
+    if (params.drivePath) settings['drive-path'] = params.drivePath;
+    if (params.createDrivePath) settings['create-drive-path'] = 'true';
+    if (params.disableFileDownload) settings['disable-download'] = 'true';
+    if (params.disableFileUpload) settings['disable-upload'] = 'true';
+  }
+  if (params.staticChannelNames) {
+    settings['static-channels'] = params.staticChannelNames;
+  }
+
   const payload = {
     connection: {
       type: 'rdp',
-      settings: {
-        hostname: params.hostname,
-        port: String(params.port || 3389),
-        username: params.username || '',
-        password: params.password || '',
-        domain: params.domain || '',
-        width: String(params.width || 1920),
-        height: String(params.height || 1080),
-        dpi: '96',
-        'color-depth': '24',
-        security: 'any',
-        'ignore-cert': 'true',
-        'disable-audio': 'true',
-        'enable-wallpaper': 'true',
-        'enable-theming': 'true',
-        'enable-font-smoothing': 'true',
-        'enable-desktop-composition': 'true',
-        'resize-method': 'display-update',
-      },
+      settings,
     },
   };
 
@@ -106,6 +137,18 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       domain: vm.domain,
       width: typeof width === 'number' ? width : 1920,
       height: typeof height === 'number' ? height : 1080,
+      supportAudioInConsole: vm.supportAudioInConsole,
+      disableAudio: vm.disableAudio,
+      enableAudioInput: vm.enableAudioInput,
+      enablePrinting: vm.enablePrinting,
+      printerName: vm.printerName,
+      enableDrive: vm.enableDrive,
+      driveName: vm.driveName || 'Guacamole',
+      disableFileDownload: vm.disableFileDownload,
+      disableFileUpload: vm.disableFileUpload,
+      drivePath: vm.enableDrive ? `/tmp/${userId}` : undefined,
+      createDrivePath: vm.enableDrive ? true : undefined,
+      staticChannelNames: vm.staticChannelNames,
     });
 
     await createAuditLog({
@@ -138,3 +181,4 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
     res.status(500).json({ success: false, error: 'Failed to initiate Guacamole connection session' });
   }
 }
+

@@ -19,7 +19,7 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
-      - DATABASE_URL=file:./data/app.db
+      - DATABASE_URL=file:../data/app.db
       - JWT_ACCESS_SECRET=rdp-access-token-secret-key-32chars
       - JWT_REFRESH_SECRET=rdp-refresh-token-secret-key-32chars
       - VM_ENCRYPTION_KEY=rdp-vm-encryption-key-32bytes-secret!
@@ -55,3 +55,7 @@ services:
     ports:
       - "3389:3389"
     shm_size: "1gb"
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse

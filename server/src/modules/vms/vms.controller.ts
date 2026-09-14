@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { encryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, VmProtocol, AuditAction } from '../../../../shared/src/index';
+import { UserRole, VmProtocol, AuditAction } from '../../shared';
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -128,7 +128,11 @@ export async function getVmById(req: AuthenticatedRequest, res: Response): Promi
 
 export async function createVm(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { name, description, protocol, hostname, port, username, password, domain, assignedUserIds } = req.body;
+    const { 
+      name, description, protocol, hostname, port, username, password, domain, assignedUserIds,
+      supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+    } = req.body;
 
     if (!name || !hostname || !username || !password) {
       res.status(400).json({ success: false, error: 'Name, hostname, username, and password are required' });
@@ -151,6 +155,18 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         encryptedPassword,
         domain: domain ? String(domain).trim() : null,
         isActive: true,
+        supportAudioInConsole: Boolean(supportAudioInConsole),
+        disableAudio: Boolean(disableAudio),
+        enableAudioInput: Boolean(enableAudioInput),
+        enablePrinting: Boolean(enablePrinting),
+        printerName: printerName ? String(printerName).trim() : null,
+        enableDrive: Boolean(enableDrive),
+        driveName: driveName ? String(driveName).trim() : null,
+        disableFileDownload: Boolean(disableFileDownload),
+        disableFileUpload: Boolean(disableFileUpload),
+        drivePath: drivePath ? String(drivePath).trim() : null,
+        createDrivePath: Boolean(createDrivePath),
+        staticChannelNames: staticChannelNames ? String(staticChannelNames).trim() : null,
       },
     });
 
@@ -191,7 +207,11 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
 export async function updateVm(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, description, protocol, hostname, port, username, password, domain, isActive } = req.body;
+    const { 
+      name, description, protocol, hostname, port, username, password, domain, isActive,
+      supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+    } = req.body;
 
     const vm = await prisma.vM.findUnique({ where: { id } });
     if (!vm) {
@@ -210,6 +230,22 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (password) updateData.encryptedPassword = encryptVMPassword(String(password));
     if (domain !== undefined) updateData.domain = domain ? String(domain).trim() : null;
     if (typeof isActive === 'boolean') updateData.isActive = isActive;
+    
+    if (supportAudioInConsole !== undefined) updateData.supportAudioInConsole = Boolean(supportAudioInConsole);
+    if (disableAudio !== undefined) updateData.disableAudio = Boolean(disableAudio);
+    if (enableAudioInput !== undefined) updateData.enableAudioInput = Boolean(enableAudioInput);
+    
+    if (enablePrinting !== undefined) updateData.enablePrinting = Boolean(enablePrinting);
+    if (printerName !== undefined) updateData.printerName = printerName ? String(printerName).trim() : null;
+    
+    if (enableDrive !== undefined) updateData.enableDrive = Boolean(enableDrive);
+    if (driveName !== undefined) updateData.driveName = driveName ? String(driveName).trim() : null;
+    if (disableFileDownload !== undefined) updateData.disableFileDownload = Boolean(disableFileDownload);
+    if (disableFileUpload !== undefined) updateData.disableFileUpload = Boolean(disableFileUpload);
+    if (drivePath !== undefined) updateData.drivePath = drivePath ? String(drivePath).trim() : null;
+    if (createDrivePath !== undefined) updateData.createDrivePath = Boolean(createDrivePath);
+    
+    if (staticChannelNames !== undefined) updateData.staticChannelNames = staticChannelNames ? String(staticChannelNames).trim() : null;
 
     const updated = await prisma.vM.update({
       where: { id },
@@ -317,3 +353,4 @@ export async function testVmConnection(req: AuthenticatedRequest, res: Response)
     res.status(500).json({ success: false, error: 'Failed to perform connection test' });
   }
 }
+

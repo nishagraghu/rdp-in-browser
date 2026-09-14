@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../../db/prisma';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { AuditAction } from '../../../../shared/src/index';
+import { AuditAction } from '../../shared';
 
 export async function getVmUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -169,3 +169,4 @@ export async function getUserVms(req: AuthenticatedRequest, res: Response): Prom
     res.status(500).json({ success: false, error: 'Failed to fetch user assigned VMs' });
   }
 }
+

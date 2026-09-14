@@ -3,7 +3,7 @@ import { prisma } from '../../db/prisma';
 import { hashPassword } from '../../utils/password';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../../../shared/src/index';
+import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
 
 export async function getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -289,3 +289,4 @@ export async function deleteUser(req: AuthenticatedRequest, res: Response): Prom
     res.status(500).json({ success: false, error: 'Failed to delete user' });
   }
 }
+

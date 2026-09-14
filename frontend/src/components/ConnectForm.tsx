@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import type { ConnectParams } from '../types';
-import './ConnectForm.css';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Checkbox } from './ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Monitor, MonitorPlay, ChevronDown, ChevronUp } from 'lucide-react';
+import { useFormik } from 'formik';
+import * as yup from 'yup';
 
 interface Props {
   onConnect: (params: ConnectParams) => void;
@@ -26,6 +34,17 @@ const DEFAULTS: ConnectParams = {
   enableMenuAnimations: false,
   disableBitmapCaching: false,
   disableAudio: true,
+  supportAudioInConsole: false,
+  enableAudioInput: false,
+  enablePrinting: false,
+  printerName: '',
+  enableDrive: false,
+  driveName: '',
+  disableFileDownload: false,
+  disableFileUpload: false,
+  drivePath: '',
+  createDrivePath: false,
+  staticChannelNames: '',
 };
 
 const SAVED_KEY = 'rdp-saved-connections';
@@ -39,180 +58,270 @@ function saveTo(list: ConnectParams[]) {
 }
 
 export default function ConnectForm({ onConnect }: Props) {
-  const [form, setForm]         = useState<ConnectParams>(DEFAULTS);
   const [saved, setSaved]       = useState<ConnectParams[]>(loadSaved);
   const [advanced, setAdvanced] = useState(false);
 
-  const set = (k: keyof ConnectParams, v: string | number | boolean) =>
-    setForm(f => ({ ...f, [k]: v }));
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.host.trim()) return;
-    const params = { ...form, label: form.label || form.host };
-    const updated = [params, ...saved.filter(s => s.host !== params.host)].slice(0, 10);
-    setSaved(updated); saveTo(updated);
-    onConnect(params);
-  };
+  const formik = useFormik({
+    initialValues: DEFAULTS,
+    validationSchema: yup.object({
+      host: yup.string().required('Host / IP is required'),
+      port: yup.number().required('Port is required').min(1).max(65535),
+      width: yup.number().required().min(800),
+      height: yup.number().required().min(600),
+    }),
+    onSubmit: (values) => {
+      if (!values.host.trim()) return;
+      const params = { ...values, label: values.label || values.host };
+      const updated = [params, ...saved.filter(s => s.host !== params.host)].slice(0, 10);
+      setSaved(updated); saveTo(updated);
+      onConnect(params);
+    }
+  });
 
   return (
-    <div className="cf-root">
-      <div className="cf-logo">🖥️ RDP in Browser</div>
+    <div className="w-full max-w-md mx-auto space-y-6">
+      <div className="flex items-center justify-center space-x-2 text-primary pb-4">
+        <Monitor className="w-8 h-8" />
+        <h1 className="text-2xl font-bold tracking-tight">RDP in Browser</h1>
+      </div>
 
       {saved.length > 0 && (
-        <div className="cf-saved">
-          <div className="cf-saved-title">Recent connections</div>
-          {saved.map((s, i) => (
-            <button key={i} className="cf-saved-item" onClick={() => setForm(s)}>
-              <span className="cf-saved-icon">🖥️</span>
-              <span className="cf-saved-label">{s.label || s.host}</span>
-              <span className="cf-saved-host">{s.username}@{s.host}:{s.port}</span>
-            </button>
-          ))}
-        </div>
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Recent Connections</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {saved.map((s, i) => (
+              <Button 
+                key={i} 
+                variant="outline" 
+                className="w-full justify-start text-left h-auto py-3 border-border/50 hover:bg-secondary/50" 
+                onClick={() => formik.setValues(s)}
+              >
+                <MonitorPlay className="w-4 h-4 mr-3 text-muted-foreground" />
+                <div className="flex flex-col overflow-hidden">
+                  <span className="font-medium truncate">{s.label || s.host}</span>
+                  <span className="text-xs text-muted-foreground truncate">{s.username}@{s.host}:{s.port}</span>
+                </div>
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
-      <form className="cf-form" onSubmit={handleSubmit}>
-        <div className="cf-section-title">New Connection</div>
-
-        <label className="cf-label">
-          Friendly name
-          <input className="cf-input" value={form.label ?? ''} placeholder="optional"
-            onChange={e => set('label', e.target.value)} />
-        </label>
-
-        <div className="cf-row">
-          <label className="cf-label cf-flex">
-            Host / IP
-            <input className="cf-input" required value={form.host}
-              placeholder="192.168.1.100"
-              onChange={e => set('host', e.target.value)} />
-          </label>
-          <label className="cf-label cf-port">
-            Port
-            <input className="cf-input" type="number" value={form.port}
-              onChange={e => set('port', parseInt(e.target.value, 10) || 3389)} />
-          </label>
-        </div>
-
-        <label className="cf-label">
-          Username
-          <input className="cf-input" value={form.username}
-            onChange={e => set('username', e.target.value)} />
-        </label>
-
-        <label className="cf-label">
-          Password
-          <input className="cf-input" type="password" value={form.password}
-            onChange={e => set('password', e.target.value)} />
-        </label>
-
-        <label className="cf-label">
-          Domain <span className="cf-optional">(optional)</span>
-          <input className="cf-input" value={form.domain}
-            onChange={e => set('domain', e.target.value)} />
-        </label>
-
-        <button type="button" className="cf-advanced-toggle"
-          onClick={() => setAdvanced(p => !p)}>
-          {advanced ? '▲ Hide' : '▼ Show'} advanced options
-        </button>
-
-        {advanced && (
-          <div className="cf-advanced">
-            <div className="cf-adv-section">Resolution &amp; Color</div>
-            <div className="cf-row">
-              <label className="cf-label cf-flex">
-                Width
-                <input className="cf-input" type="number" value={form.width}
-                  onChange={e => set('width', parseInt(e.target.value, 10))} />
-              </label>
-              <label className="cf-label cf-flex">
-                Height
-                <input className="cf-input" type="number" value={form.height}
-                  onChange={e => set('height', parseInt(e.target.value, 10))} />
-              </label>
-              <label className="cf-label cf-flex">
-                Color depth
-                <select className="cf-select" value={form.colorDepth}
-                  onChange={e => set('colorDepth', parseInt(e.target.value, 10))}>
-                  <option value={8}>8-bit</option>
-                  <option value={16}>16-bit</option>
-                  <option value={24}>24-bit</option>
-                  <option value={32}>32-bit (best)</option>
-                </select>
-              </label>
+      <Card className="border-border shadow-sm">
+        <form onSubmit={formik.handleSubmit}>
+          <CardHeader>
+            <CardTitle>New Connection</CardTitle>
+            <CardDescription>Enter details to connect to a remote desktop.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="label">Friendly Name <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+              <Input id="label" name="label" value={formik.values.label ?? ''} placeholder="e.g. My Server" onChange={formik.handleChange} onBlur={formik.handleBlur} />
             </div>
 
-            <div className="cf-adv-section">Visual Quality</div>
-            <div className="cf-checks">
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableWallpaper}
-                  onChange={e => set('enableWallpaper', e.target.checked)} />
-                Wallpaper
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableTheming}
-                  onChange={e => set('enableTheming', e.target.checked)} />
-                Theming
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableFontSmoothing}
-                  onChange={e => set('enableFontSmoothing', e.target.checked)} />
-                Font smoothing
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableDesktopComposition}
-                  onChange={e => set('enableDesktopComposition', e.target.checked)} />
-                Desktop composition
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableFullWindowDrag}
-                  onChange={e => set('enableFullWindowDrag', e.target.checked)} />
-                Full window drag
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.enableMenuAnimations}
-                  onChange={e => set('enableMenuAnimations', e.target.checked)} />
-                Menu animations
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.disableBitmapCaching}
-                  onChange={e => set('disableBitmapCaching', e.target.checked)} />
-                Disable bitmap caching
-              </label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="host">Host / IP</Label>
+                <Input id="host" name="host" value={formik.values.host} placeholder="192.168.1.100" onChange={formik.handleChange} onBlur={formik.handleBlur} className={formik.touched.host && formik.errors.host ? "border-destructive" : ""} />
+                {formik.touched.host && formik.errors.host && <div className="text-xs text-destructive">{formik.errors.host}</div>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="port">Port</Label>
+                <Input id="port" name="port" type="number" value={formik.values.port} onChange={formik.handleChange} onBlur={formik.handleBlur} className={formik.touched.port && formik.errors.port ? "border-destructive" : ""} />
+              </div>
             </div>
 
-            <div className="cf-adv-section">Connection</div>
-            <div className="cf-row">
-              <label className="cf-label cf-flex">
-                Security
-                <select className="cf-select" value={form.security}
-                  onChange={e => set('security', e.target.value)}>
-                  <option value="any">Any (auto)</option>
-                  <option value="nla">NLA</option>
-                  <option value="tls">TLS</option>
-                  <option value="rdp">RDP (classic)</option>
-                </select>
-              </label>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" name="username" value={formik.values.username} onChange={formik.handleChange} onBlur={formik.handleBlur} />
             </div>
-            <div className="cf-checks">
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.ignoreCert}
-                  onChange={e => set('ignoreCert', e.target.checked)} />
-                Ignore certificate errors
-              </label>
-              <label className="cf-checkbox">
-                <input type="checkbox" checked={form.disableAudio}
-                  onChange={e => set('disableAudio', e.target.checked)} />
-                Disable audio
-              </label>
-            </div>
-          </div>
-        )}
 
-        <button className="cf-submit" type="submit">Connect →</button>
-      </form>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" name="password" type="password" value={formik.values.password} onChange={formik.handleChange} onBlur={formik.handleBlur} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="domain">Domain <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+              <Input id="domain" name="domain" value={formik.values.domain} onChange={formik.handleChange} onBlur={formik.handleBlur} />
+            </div>
+
+            <Button 
+              type="button" 
+              variant="ghost" 
+              className="w-full text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setAdvanced(p => !p)}
+            >
+              {advanced ? <><ChevronUp className="w-3 h-3 mr-1"/> Hide Advanced</> : <><ChevronDown className="w-3 h-3 mr-1"/> Show Advanced</>}
+            </Button>
+
+            {advanced && (
+              <div className="space-y-6 pt-4 border-t border-border">
+                
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">Resolution & Color</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Width</Label>
+                      <Input type="number" name="width" value={formik.values.width} onChange={formik.handleChange} onBlur={formik.handleBlur} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Height</Label>
+                      <Input type="number" name="height" value={formik.values.height} onChange={formik.handleChange} onBlur={formik.handleBlur} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Color Depth</Label>
+                    <Select value={String(formik.values.colorDepth)} onValueChange={v => formik.setFieldValue('colorDepth', parseInt(v, 10))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="8">8-bit</SelectItem>
+                        <SelectItem value="16">16-bit</SelectItem>
+                        <SelectItem value="24">24-bit</SelectItem>
+                        <SelectItem value="32">32-bit (Best)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">Visual Quality</h4>
+                  <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                    {[
+                      { id: 'enableWallpaper', label: 'Wallpaper' },
+                      { id: 'enableTheming', label: 'Theming' },
+                      { id: 'enableFontSmoothing', label: 'Font smoothing' },
+                      { id: 'enableDesktopComposition', label: 'Desktop composition' },
+                      { id: 'enableFullWindowDrag', label: 'Full window drag' },
+                      { id: 'enableMenuAnimations', label: 'Menu animations' },
+                      { id: 'disableBitmapCaching', label: 'Disable bitmap caching' },
+                    ].map(opt => (
+                      <div key={opt.id} className="flex items-center space-x-2">
+                        <Checkbox 
+                          id={opt.id} 
+                          checked={Boolean(formik.values[opt.id as keyof ConnectParams])} 
+                          onCheckedChange={c => formik.setFieldValue(opt.id, Boolean(c))} 
+                        />
+                        <label htmlFor={opt.id} className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">{opt.label}</label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">Connection</h4>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Security</Label>
+                    <Select value={formik.values.security} onValueChange={v => formik.setFieldValue('security', v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any (Auto)</SelectItem>
+                        <SelectItem value="nla">NLA</SelectItem>
+                        <SelectItem value="tls">TLS</SelectItem>
+                        <SelectItem value="rdp">RDP (Classic)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-3 pt-2">
+                     <div className="flex items-center space-x-2">
+                        <Checkbox id="ignoreCert" checked={formik.values.ignoreCert} onCheckedChange={c => formik.setFieldValue('ignoreCert', Boolean(c))} />
+                        <label htmlFor="ignoreCert" className="text-xs font-medium leading-none">Ignore certificate errors</label>
+                      </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">Device Redirection</h4>
+                  
+                  {/* Audio */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Audio</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4">
+                      <div className="flex items-center space-x-2">
+                         <Checkbox id="disableAudio" checked={formik.values.disableAudio} onCheckedChange={c => formik.setFieldValue('disableAudio', Boolean(c))} />
+                         <label htmlFor="disableAudio" className="text-xs font-medium leading-none">Disable audio</label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                         <Checkbox id="supportAudioInConsole" checked={formik.values.supportAudioInConsole} onCheckedChange={c => formik.setFieldValue('supportAudioInConsole', Boolean(c))} />
+                         <label htmlFor="supportAudioInConsole" className="text-xs font-medium leading-none">Support audio in console</label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                         <Checkbox id="enableAudioInput" checked={formik.values.enableAudioInput} onCheckedChange={c => formik.setFieldValue('enableAudioInput', Boolean(c))} />
+                         <label htmlFor="enableAudioInput" className="text-xs font-medium leading-none">Enable audio input</label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Printing */}
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <Label className="text-xs font-semibold">Printing</Label>
+                    <div className="flex flex-col space-y-3">
+                      <div className="flex items-center space-x-2">
+                         <Checkbox id="enablePrinting" checked={formik.values.enablePrinting} onCheckedChange={c => formik.setFieldValue('enablePrinting', Boolean(c))} />
+                         <label htmlFor="enablePrinting" className="text-xs font-medium leading-none">Enable printing</label>
+                      </div>
+                      {formik.values.enablePrinting && (
+                        <div className="pl-6">
+                          <Label htmlFor="printerName" className="text-xs">Redirected printer name</Label>
+                          <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Drive */}
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <Label className="text-xs font-semibold">Drive</Label>
+                    <div className="flex items-center space-x-2">
+                       <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', Boolean(c))} />
+                       <label htmlFor="enableDrive" className="text-xs font-medium leading-none">Enable drive redirection</label>
+                    </div>
+                    {formik.values.enableDrive && (
+                      <div className="pl-6 space-y-3 mt-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="driveName" className="text-xs">Drive name</Label>
+                            <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="drivePath" className="text-xs">Drive path</Label>
+                            <Input id="drivePath" name="drivePath" value={formik.values.drivePath} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="disableFileDownload" checked={formik.values.disableFileDownload} onCheckedChange={c => formik.setFieldValue('disableFileDownload', Boolean(c))} />
+                            <Label htmlFor="disableFileDownload" className="font-normal text-xs">Disable file download</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', Boolean(c))} />
+                            <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable file upload</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="createDrivePath" checked={formik.values.createDrivePath} onCheckedChange={c => formik.setFieldValue('createDrivePath', Boolean(c))} />
+                            <Label htmlFor="createDrivePath" className="font-normal text-xs">Auto create drive path</Label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Channels */}
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <Label htmlFor="staticChannelNames" className="text-xs font-semibold">Static channel names</Label>
+                    <Input id="staticChannelNames" name="staticChannelNames" value={formik.values.staticChannelNames} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
+                  </div>
+                </div>
+
+              </div>
+            )}
+            
+            <Button type="submit" className="w-full mt-4">Connect</Button>
+          </CardContent>
+        </form>
+      </Card>
     </div>
   );
 }

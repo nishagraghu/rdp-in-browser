@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getVmUsers, assignUserToVm, removeUserFromVm, bulkUpdateVmAssignments, getUserVms } from './assignments.controller';
 import { authenticateJWT, requirePermission } from '../../middleware/auth';
-import { Permission } from '../../../../shared/src/index';
+import { Permission } from '../../shared';
 
 const router = Router();
 
@@ -14,3 +14,4 @@ router.put('/vms/:id/users', requirePermission(Permission.VM_ASSIGN_USER), bulkU
 router.get('/users/:userId/vms', requirePermission(Permission.VM_VIEW), getUserVms);
 
 export default router;
+

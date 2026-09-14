@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getUsers, getUserById, createUser, updateUser, deleteUser } from './users.controller';
 import { authenticateJWT, requirePermission } from '../../middleware/auth';
-import { Permission } from '../../../../shared/src/index';
+import { Permission } from '../../shared';
 
 const router = Router();
 
@@ -14,3 +14,4 @@ router.put('/:id', requirePermission(Permission.USER_UPDATE), updateUser);
 router.delete('/:id', requirePermission(Permission.USER_DELETE), deleteUser);
 
 export default router;
+

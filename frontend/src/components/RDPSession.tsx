@@ -2,7 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import Guacamole from 'guacamole-common-js';
 import { RDPTunnel } from '../lib/tunnel';
 import type { RDPSession as Session } from '../types';
-import './RDPSession.css';
+import { X, Monitor } from 'lucide-react';
+import { Button } from './ui/button';
 
 interface Props {
   session: Session;
@@ -103,7 +104,16 @@ export default function RDPSession({
     el.addEventListener('wheel',       sendWheelFromEvent, { passive: false });
 
     // Keyboard (only when this session is focused)
-    const keyboard = new Guacamole.Keyboard(document);
+    const keyboardTarget = displayRef.current;
+    const keyboard = new Guacamole.Keyboard(keyboardTarget);
+    // Ensure the target can receive focus
+    keyboardTarget.tabIndex = -1;
+    keyboardTarget.style.outline = 'none';
+    
+    // Focus the target whenever we click the session
+    const focusTarget = () => keyboardTarget.focus();
+    displayRef.current.addEventListener('mousedown', focusTarget);
+
     keyboard.onkeydown = (keysym: number) => {
       if (focusedRef.current) client.sendKeyEvent(1, keysym);
     };
@@ -140,6 +150,9 @@ export default function RDPSession({
       rdpReadyRef.current = false;
       keyboard.onkeydown = null;
       keyboard.onkeyup   = null;
+      if (keyboardTarget) {
+        keyboardTarget.removeEventListener('mousedown', focusTarget);
+      }
       ro.disconnect();
       client.disconnect();
       if (displayRef.current && el.parentNode === displayRef.current) {
@@ -223,51 +236,62 @@ export default function RDPSession({
   if (session.isMinimized) return null;
 
   return (
-    <div className={`rdp-session ${focused ? 'focused' : ''} ${draggingOut ? 'dragging-out' : ''}`} style={style} onMouseDown={onFocus}>
+    <div 
+      className={`absolute flex flex-col overflow-hidden bg-background border rounded-lg shadow-xl transition-opacity duration-200 ${focused ? 'border-primary ring-1 ring-primary shadow-2xl' : 'border-border opacity-90'} ${draggingOut ? 'opacity-50 blur-sm pointer-events-none' : ''}`} 
+      style={style} 
+      onMouseDown={onFocus}
+    >
       {/* Title bar */}
-      <div className="rdp-titlebar" onMouseDown={onTitleMouseDown}>
-        <span className="rdp-titlebar-icon">🖥️</span>
-        <span className="rdp-titlebar-title">
-          {session.params.label || session.params.host}
-          {status === 'connecting' && <span className="rdp-status connecting"> — Connecting…</span>}
-          {status === 'error'      && <span className="rdp-status error"> — {errMsg}</span>}
-          {status === 'disconnected' && <span className="rdp-status disconnected"> — Disconnected</span>}
-        </span>
-        <div className="rdp-titlebar-btns">
-          <button className="rdp-btn close" title="Close" onClick={onClose}>✕</button>
+      <div 
+        className={`flex items-center justify-between h-10 px-3 select-none ${focused ? 'bg-primary/5 border-b border-primary/20' : 'bg-muted/50 border-b border-border'} ${!session.isMaximized ? 'cursor-move' : ''}`} 
+        onMouseDown={onTitleMouseDown}
+      >
+        <div className="flex items-center space-x-2 overflow-hidden">
+          <Monitor className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium truncate">
+            {session.params.label || session.params.host}
+            {status === 'connecting' && <span className="text-muted-foreground font-normal"> — Connecting…</span>}
+            {status === 'error'      && <span className="text-destructive font-normal"> — {errMsg}</span>}
+            {status === 'disconnected' && <span className="text-muted-foreground font-normal"> — Disconnected</span>}
+          </span>
+        </div>
+        <div className="flex items-center ml-2">
+          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
       {/* Display area */}
-      <div className="rdp-display" ref={displayRef}>
+      <div className="relative flex-1 bg-black overflow-hidden" ref={displayRef}>
         {status === 'connecting' && (
-          <div className="rdp-overlay">
-            <div className="rdp-spinner" />
-            <div>Connecting to {session.params.host}…</div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+            <div className="text-sm font-medium">Connecting to {session.params.host}…</div>
           </div>
         )}
         {(status === 'error' || status === 'disconnected') && (
-          <div className="rdp-overlay error">
-            <div className="rdp-overlay-icon">⚠️</div>
-            <div>{status === 'error' ? errMsg : 'Session disconnected'}</div>
-            <button className="rdp-reconnect" onClick={() => {
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm z-10 space-y-4">
+            <div className="text-4xl">⚠️</div>
+            <div className="text-sm font-medium">{status === 'error' ? errMsg : 'Session disconnected'}</div>
+            <Button variant="outline" size="sm" onClick={() => {
               clientRef.current?.disconnect();
               setStatus('connecting');
-            }}>Reconnect</button>
+            }}>Reconnect</Button>
           </div>
         )}
       </div>
 
       {/* Resize handles */}
       {!session.isMaximized && (<>
-        <div className="rdp-resize n"  onMouseDown={onResizeMouseDown('n')} />
-        <div className="rdp-resize s"  onMouseDown={onResizeMouseDown('s')} />
-        <div className="rdp-resize e"  onMouseDown={onResizeMouseDown('e')} />
-        <div className="rdp-resize w"  onMouseDown={onResizeMouseDown('w')} />
-        <div className="rdp-resize nw" onMouseDown={onResizeMouseDown('nw')} />
-        <div className="rdp-resize ne" onMouseDown={onResizeMouseDown('ne')} />
-        <div className="rdp-resize sw" onMouseDown={onResizeMouseDown('sw')} />
-        <div className="rdp-resize se" onMouseDown={onResizeMouseDown('se')} />
+        <div className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize" onMouseDown={onResizeMouseDown('n')} />
+        <div className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize" onMouseDown={onResizeMouseDown('s')} />
+        <div className="absolute top-0 bottom-0 right-0 w-1 cursor-ew-resize" onMouseDown={onResizeMouseDown('e')} />
+        <div className="absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize" onMouseDown={onResizeMouseDown('w')} />
+        <div className="absolute top-0 left-0 w-2 h-2 cursor-nwse-resize" onMouseDown={onResizeMouseDown('nw')} />
+        <div className="absolute top-0 right-0 w-2 h-2 cursor-nesw-resize" onMouseDown={onResizeMouseDown('ne')} />
+        <div className="absolute bottom-0 left-0 w-2 h-2 cursor-nesw-resize" onMouseDown={onResizeMouseDown('sw')} />
+        <div className="absolute bottom-0 right-0 w-2 h-2 cursor-nwse-resize" onMouseDown={onResizeMouseDown('se')} />
       </>)}
     </div>
   );

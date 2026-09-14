@@ -19,6 +19,7 @@ import vmsRoutes from './modules/vms/vms.routes';
 import assignmentsRoutes from './modules/assignments/assignments.routes';
 import guacamoleRoutes from './modules/guacamole/guacamole.routes';
 import auditRoutes from './modules/audit/audit.routes';
+import filesRoutes from './modules/files/files.routes';
 
 // Ensure data directory exists for SQLite
 const dataDir = path.dirname(path.resolve(config.DATABASE_URL.replace('file:', '')));
@@ -49,6 +50,7 @@ app.use('/api/assignments', assignmentsRoutes);
 app.use('/api', assignmentsRoutes); // For /api/vms/:id/users & /api/users/:userId/vms
 app.use('/api', guacamoleRoutes); // For /api/vms/:id/connect
 app.use('/api/audit-logs', auditRoutes);
+app.use('/api/files', filesRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({

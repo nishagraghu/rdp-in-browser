@@ -9,8 +9,13 @@ import {
   LogOut, 
   User as UserIcon, 
   LayoutDashboard, 
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronUp
 } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { FileManager } from './FileManager';
 
 export const Layout: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -26,7 +31,7 @@ export const Layout: React.FC = () => {
   const isAdmin = user?.role === 'ADMIN';
 
   const userNav = [
-    { name: 'My Remote Desktops', path: '/dashboard', icon: Monitor },
+    { name: 'My Desktops', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },
   ];
 
@@ -35,86 +40,104 @@ export const Layout: React.FC = () => {
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'VM Management', path: '/admin/vms', icon: Monitor },
     { name: 'Assignments Matrix', path: '/admin/assignments', icon: SlidersHorizontal },
-    { name: 'User Dashboard View', path: '/dashboard', icon: Monitor },
+    { name: 'User View', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },
   ];
 
   const navItems = isAdmin ? adminNav : userNav;
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex h-screen w-full flex-col md:flex-row bg-background">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
+      <aside className="w-64 bg-card border-r flex flex-col justify-between shrink-0 hidden md:flex">
         <div>
           {/* Brand Header */}
-          <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-            <div className="p-2 bg-sky-600/20 text-sky-400 rounded-lg border border-sky-500/30">
-              <Monitor className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg text-white leading-tight">GuacRDP</h1>
-              <p className="text-xs text-slate-400">Remote Desktop Gateway</p>
-            </div>
+          <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+            <Link to="/" className="flex items-center gap-2 font-semibold">
+              <div className="h-6 w-6 bg-primary/10 text-primary rounded-md flex items-center justify-center">
+                <Monitor className="h-4 w-4" />
+              </div>
+              <span className="">GuacRDP</span>
+            </Link>
           </div>
 
           {/* Nav items */}
-          <nav className="p-4 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="flex-1 overflow-auto py-2">
+            <nav className="grid items-start px-2 text-sm font-medium lg:px-4 gap-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${
+                      isActive
+                        ? 'bg-muted text-primary'
+                        : 'text-muted-foreground hover:text-primary hover:bg-muted'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
         </div>
 
         {/* User Card & Logout */}
-        <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <div className="h-9 w-9 rounded-full bg-sky-600 flex items-center justify-center font-bold text-white uppercase text-sm shrink-0">
-                {user?.name?.[0] || 'U'}
-              </div>
-              <div className="truncate">
-                <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-                <div className="flex items-center space-x-1">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${
-                    isAdmin ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  }`}>
-                    {user?.role}
-                  </span>
+        <div className="mt-auto p-4 border-t">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start h-auto p-2">
+                <Avatar className="h-8 w-8 mr-2">
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    {user?.name?.[0] || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start text-left truncate mr-2 flex-1">
+                  <span className="text-sm font-medium truncate w-full">{user?.name}</span>
+                  <span className="text-xs text-muted-foreground">{user?.role}</span>
                 </div>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-              title="Sign Out"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-          </div>
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate('/profile')}>
+                <UserIcon className="mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 
       {/* Main View Area */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-950 overflow-auto">
-        <div className="p-8 max-w-7xl w-full mx-auto">
+      <main className="flex flex-1 flex-col overflow-auto">
+        {/* Header (Visible on both mobile and desktop) */}
+        <header className="flex h-14 items-center justify-between md:justify-end gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
+          <Link to="/" className="flex items-center gap-2 font-semibold md:hidden">
+            <Monitor className="h-5 w-5 text-primary" />
+            <span className="">GuacRDP</span>
+          </Link>
+          <div className="flex items-center gap-4 ml-auto">
+            <FileManager />
+          </div>
+        </header>
+
+        <div className="flex-1 p-4 lg:p-6 max-w-7xl w-full mx-auto">
           <Outlet />
         </div>
       </main>
     </div>
   );
 };
+

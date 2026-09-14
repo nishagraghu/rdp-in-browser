@@ -4,7 +4,7 @@ import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../../../shared/src/index';
+import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
 
 export async function getSetupStatus(_req: Request, res: Response): Promise<void> {
   try {
@@ -321,3 +321,4 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     res.status(401).json({ success: false, error: 'Invalid refresh token' });
   }
 }
+
