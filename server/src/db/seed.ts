@@ -2,15 +2,20 @@ import { prisma } from './prisma';
 import { hashPassword } from '../utils/password';
 import { encryptVMPassword } from '../utils/encryption';
 import { UserRole, VmProtocol } from '../shared';
+import { config } from '../config/env';
 
 export async function autoSeedDatabase(): Promise<void> {
   try {
+    if (!config.AUTO_SEED) {
+      return;
+    }
+
     const userCount = await prisma.user.count();
     if (userCount > 0) {
       return; // Database already initialized
     }
 
-    console.log('🌱 Database is empty. Auto-seeding default Admin, Guest user, and sample RDP VM...');
+    console.log('Database is empty. AUTO_SEED is enabled — creating demo accounts and sample VM...');
 
     const adminPasswordHash = await hashPassword('admin123');
     const guestPasswordHash = await hashPassword('guest123');
@@ -58,9 +63,8 @@ export async function autoSeedDatabase(): Promise<void> {
       ],
     });
 
-    console.log('✅ Auto-seed complete:');
-    console.log('   👑 Admin account: admin / admin123');
-    console.log('   👤 Guest account: guest / guest123');
+    console.log('Auto-seed complete. Demo accounts were created because AUTO_SEED=true.');
+    console.log('Change these passwords immediately if this is not a disposable environment.');
   } catch (error) {
     console.error('❌ Auto-seed failed:', error);
   }
