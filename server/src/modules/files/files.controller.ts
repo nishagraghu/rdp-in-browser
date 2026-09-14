@@ -4,22 +4,27 @@ import path from 'path';
 import multer from 'multer';
 import { AuthenticatedRequest } from '../../middleware/auth';
 
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const UPLOADS_DIR = path.join(process.cwd(), 'drives');
 
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.chmodSync(UPLOADS_DIR, 0o777);
 }
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     const authReq = req as AuthenticatedRequest;
-    const userId = authReq.user?.userId;
-    if (!userId) {
+    const username = authReq.user?.username;
+    if (!username) {
       return cb(new Error('User not authenticated'), '');
     }
-    const userDir = path.join(UPLOADS_DIR, userId);
+    const userDir = path.join(UPLOADS_DIR, username);
     if (!fs.existsSync(userDir)) {
       fs.mkdirSync(userDir, { recursive: true });
+      fs.chownSync(userDir, 1000, 1000);
+      const downloadDir = path.join(userDir, 'Download');
+      fs.mkdirSync(downloadDir, { recursive: true });
+      fs.chownSync(downloadDir, 1000, 1000);
     }
     cb(null, userDir);
   },
@@ -52,16 +57,19 @@ export async function uploadFile(req: AuthenticatedRequest, res: Response): Prom
 }
 
 export async function listFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.userId;
-  if (!userId) {
+  const username = req.user?.username;
+  if (!username) {
     res.status(401).json({ success: false, error: 'Unauthenticated' });
     return;
   }
 
-  const userDir = path.join(UPLOADS_DIR, userId);
+  const userDir = path.join(UPLOADS_DIR, username);
   if (!fs.existsSync(userDir)) {
-    res.json({ success: true, data: [] });
-    return;
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.chownSync(userDir, 1000, 1000);
+    const downloadDir = path.join(userDir, 'Download');
+    fs.mkdirSync(downloadDir, { recursive: true });
+    fs.chownSync(downloadDir, 1000, 1000);
   }
 
   try {
@@ -81,8 +89,8 @@ export async function listFiles(req: AuthenticatedRequest, res: Response): Promi
 }
 
 export async function downloadFile(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.userId;
-  if (!userId) {
+  const username = req.user?.username;
+  if (!username) {
     res.status(401).json({ success: false, error: 'Unauthenticated' });
     return;
   }
@@ -95,7 +103,7 @@ export async function downloadFile(req: AuthenticatedRequest, res: Response): Pr
 
   // Prevent directory traversal attacks
   const safeFilename = path.basename(filename);
-  const filePath = path.join(UPLOADS_DIR, userId, safeFilename);
+  const filePath = path.join(UPLOADS_DIR, username, safeFilename);
 
   if (!fs.existsSync(filePath)) {
     res.status(404).json({ success: false, error: 'File not found' });

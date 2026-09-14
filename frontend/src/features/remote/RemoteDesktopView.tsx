@@ -21,11 +21,20 @@ import {
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import {
+  isBrowserShortcut,
+  isUploadShortcut,
+  lockRdpKeyboard,
+  shouldBlockEscapeInFullscreen,
+  unlockRdpKeyboard,
+} from '@/lib/rdpKeyboard';
+import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
   const navigate = useNavigate();
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const displayRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<Guacamole.Client | null>(null);
@@ -76,18 +85,61 @@ export const RemoteDesktopView: React.FC = () => {
     applyScale(scaleMode, customScalePercent);
   }, [scaleMode, customScalePercent, applyScale]);
 
-  // Fullscreen change listener
+  const focusDisplay = useCallback(() => {
+    displayRef.current?.focus();
+  }, []);
+
+  // Fullscreen change listener — lock keyboard so RDP shortcuts take priority over browser
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+    const handleFullscreenChange = async () => {
+      const active = !!document.fullscreenElement;
+      setIsFullscreen(active);
+
+      if (active) {
+        await lockRdpKeyboard();
+        focusDisplay();
+      } else {
+        unlockRdpKeyboard();
+      }
+
       setTimeout(() => {
         applyScale(scaleMode, customScalePercent);
       }, 100);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [scaleMode, customScalePercent, applyScale]);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      unlockRdpKeyboard();
+    };
+  }, [scaleMode, customScalePercent, applyScale, focusDisplay]);
+
+  // In fullscreen, suppress browser shortcuts so keystrokes reach the RDP session
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isUploadShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (clientRef.current) {
+          clientRef.current.sendKeyEvent(0, 0xffe3); // Release Ctrl
+          clientRef.current.sendKeyEvent(0, 0xffe1); // Release Shift
+          clientRef.current.sendKeyEvent(0, 0xffe9); // Release Alt
+        }
+        fileInputRef.current?.click();
+        return;
+      }
+
+      if (!isFullscreen) return;
+
+      if (shouldBlockEscapeInFullscreen(e, isFullscreen) || isBrowserShortcut(e)) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [isFullscreen]);
 
   // Initialize Guacamole session
   useEffect(() => {
@@ -96,7 +148,6 @@ export const RemoteDesktopView: React.FC = () => {
     let tunnel: Guacamole.WebSocketTunnel | null = null;
     let client: Guacamole.Client | null = null;
     let resizeObserver: ResizeObserver | null = null;
-    let globalKeyDownHandler: ((e: KeyboardEvent) => void) | null = null;
 
     const initSession = async () => {
       setConnectionStatus('connecting');
@@ -207,28 +258,6 @@ export const RemoteDesktopView: React.FC = () => {
           
           keyboardTarget.addEventListener('mousedown', () => keyboardTarget.focus());
           
-          // We use a global window event listener to ensure we catch the shortcut
-          // before Guacamole or anything else can intercept it.
-          globalKeyDownHandler = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.shiftKey && e.altKey) {
-              e.preventDefault();
-              e.stopPropagation();
-              
-              // Release modifiers on the remote machine to prevent stuck keys
-              if (clientRef.current) {
-                clientRef.current.sendKeyEvent(0, 0xffe3); // Release Ctrl
-                clientRef.current.sendKeyEvent(0, 0xffe1); // Release Shift
-                clientRef.current.sendKeyEvent(0, 0xffe9); // Release Alt
-              }
-              // Trigger native upload file picker
-              if (fileInputRef.current) {
-                fileInputRef.current.click();
-              }
-            }
-          };
-          
-          window.addEventListener('keydown', globalKeyDownHandler, { capture: true });
-          
           keyboard = new Guacamole.Keyboard(keyboardTarget);
           
           keyboard.onkeydown = (keysym: number) => {
@@ -260,9 +289,6 @@ export const RemoteDesktopView: React.FC = () => {
     initSession();
 
     return () => {
-      if (globalKeyDownHandler) {
-        window.removeEventListener('keydown', globalKeyDownHandler, { capture: true });
-      }
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
@@ -274,25 +300,39 @@ export const RemoteDesktopView: React.FC = () => {
     };
   }, [vmId, applyScale]);
 
+  const goToDashboard = () => {
+    navigate('/dashboard', { state: DASHBOARD_SHOW_LIST_STATE });
+  };
+
   const handleDisconnect = () => {
     if (clientRef.current) {
       clientRef.current.disconnect();
     }
-    navigate('/dashboard');
+    goToDashboard();
   };
 
   const handleReconnect = () => {
     window.location.reload();
   };
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = async () => {
+    const root = rootRef.current;
+    if (!root) return;
+
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
+      try {
+        await root.requestFullscreen();
+        await lockRdpKeyboard();
+        focusDisplay();
+      } catch {
+        toast.error('Failed to enter fullscreen mode');
+      }
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-        setIsFullscreen(false);
+      unlockRdpKeyboard();
+      try {
+        await document.exitFullscreen();
+      } catch {
+        toast.error('Failed to exit fullscreen mode');
       }
     }
   };
@@ -383,7 +423,7 @@ export const RemoteDesktopView: React.FC = () => {
   const scaledHeight = Math.round(nativeResolution.height * scaleFactor);
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-background text-foreground overflow-hidden select-none">
+    <div ref={rootRef} className="w-screen h-screen flex flex-col bg-background text-foreground overflow-hidden select-none">
       {/* Session Toolbar Header */}
       <header className="h-11 bg-background/95 backdrop-blur-md border-b px-4 flex items-center justify-between z-30 shrink-0 gap-3">
         {/* Left Side: Back button, VM name & status */}
@@ -391,7 +431,7 @@ export const RemoteDesktopView: React.FC = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/dashboard')}
+            onClick={goToDashboard}
             className="p-1.5 h-8 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center space-x-1.5 text-xs font-medium cursor-pointer"
             title="Return to Dashboard"
           >
@@ -524,9 +564,10 @@ export const RemoteDesktopView: React.FC = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={toggleFullscreen}
+            onClick={() => { toggleFullscreen(); }}
+            onMouseDown={(e) => e.preventDefault()}
             className="h-8 w-8 p-0"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen (toolbar button)' : 'Enter Fullscreen — RDP shortcuts take priority'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </Button>
@@ -556,6 +597,7 @@ export const RemoteDesktopView: React.FC = () => {
       {/* Main Remote Display Viewport Container */}
       <main 
         ref={containerRef}
+        onMouseDown={focusDisplay}
         className={`flex-1 w-full bg-background relative flex items-center justify-center ${
           scaleMode === 'fit' ? 'overflow-hidden' : 'overflow-auto'
         }`}
@@ -585,7 +627,7 @@ export const RemoteDesktopView: React.FC = () => {
               <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
                 Retry Connection
               </Button>
-              <Button variant="secondary" onClick={() => navigate('/dashboard')} className="font-semibold rounded-xl text-sm">
+              <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
                 Return to Dashboard
               </Button>
             </div>

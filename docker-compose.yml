@@ -7,6 +7,8 @@ services:
       - "4822:4822"
     environment:
       - GUACD_LOG_LEVEL=info
+    volumes:
+      - shared-drives:/drives
 
   server:
     build:
@@ -29,6 +31,7 @@ services:
       - CORS_ORIGIN=http://localhost:5173
     volumes:
       - ./server/data:/app/server/data
+      - shared-drives:/app/server/drives
     depends_on:
       - guacd
 
@@ -59,3 +62,6 @@ services:
       - SYS_ADMIN
     devices:
       - /dev/fuse:/dev/fuse
+
+volumes:
+  shared-drives:

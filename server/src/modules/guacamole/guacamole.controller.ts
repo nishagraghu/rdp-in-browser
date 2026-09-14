@@ -146,7 +146,7 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       driveName: vm.driveName || 'Guacamole',
       disableFileDownload: vm.disableFileDownload,
       disableFileUpload: vm.disableFileUpload,
-      drivePath: vm.enableDrive ? `/tmp/${userId}` : undefined,
+      drivePath: vm.enableDrive ? `/drives/${req.user?.username}` : undefined,
       createDrivePath: vm.enableDrive ? true : undefined,
       staticChannelNames: vm.staticChannelNames,
     });

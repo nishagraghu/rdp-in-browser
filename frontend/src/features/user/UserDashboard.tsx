@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
 import { fetchVms } from '../../store/vmSlice';
@@ -7,17 +7,27 @@ import { Monitor, Play, Server } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { DashboardLocationState } from '@/lib/dashboardNavigation';
 
 export const UserDashboard: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { vms, isLoading } = useSelector((state: RootState) => state.vms);
   const { user } = useSelector((state: RootState) => state.auth);
+
+  const showList = (location.state as DashboardLocationState | null)?.showList === true;
+  const singleVm = vms.length === 1 ? vms[0] : null;
+  const shouldAutoConnect = !isLoading && !!singleVm?.isActive && !showList;
 
   useEffect(() => {
     dispatch(fetchVms());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!shouldAutoConnect || !singleVm) return;
+    navigate(`/remote/${singleVm.id}`, { replace: true });
+  }, [shouldAutoConnect, singleVm, navigate]);
 
   const handleConnect = (vmId: string) => {
     navigate(`/remote/${vmId}`);
@@ -30,16 +40,24 @@ export const UserDashboard: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">My Remote Desktops</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Welcome back, <span className="text-primary font-semibold">{user?.name}</span>. Select a virtual machine to launch an RDP session.
+            Welcome back, <span className="text-primary font-semibold">{user?.name}</span>.
+            {shouldAutoConnect
+              ? ' Connecting to your remote desktop...'
+              : vms.length === 1
+                ? ' Your assigned remote desktop. Click Connect to launch a session.'
+                : ' Select a virtual machine to launch an RDP session.'}
           </p>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-48 rounded-2xl" />
-          ))}
+      {isLoading || shouldAutoConnect ? (
+        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">
+            {shouldAutoConnect && singleVm
+              ? `Opening ${singleVm.name}...`
+              : 'Loading your remote desktops...'}
+          </p>
         </div>
       ) : vms.length === 0 ? (
         <Card>
