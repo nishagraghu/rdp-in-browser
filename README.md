@@ -4,6 +4,8 @@ Browser-based RDP client powered by Apache Guacamole.
 
 **Production deployment:** see [README-PRODUCTION.md](README-PRODUCTION.md).
 
+**Customer distribution (no source code):** see [DISTRIBUTION-GUIDE.md](DISTRIBUTION-GUIDE.md) and the `distribution/` folder.
+
 ## Quick Start (Production)
 
 1. Copy `.env.example` to `.env` and configure secrets.

@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '.
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
+import { ensureUserDriveDirectory } from '../../utils/userDrive';
 
 export async function getSetupStatus(_req: Request, res: Response): Promise<void> {
   try {
@@ -68,6 +69,8 @@ export async function initialSetup(req: Request, res: Response): Promise<void> {
         isActive: true,
       },
     });
+
+    ensureUserDriveDirectory(admin.username);
 
     await createAuditLog({
       userId: admin.id,

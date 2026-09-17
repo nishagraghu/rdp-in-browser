@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import Guacamole from 'guacamole-common-js';
 import api from '../../api/client';
+import { AppDispatch, RootState } from '../../store';
+import { endVmConnection, startVmConnection, VM_CONNECTION_LOADER_MIN_MS } from '../../store/vmSlice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   Monitor, 
   ArrowLeft, 
   Maximize2, 
-  Minimize2, 
   RefreshCw, 
   Power, 
   AlertTriangle,
@@ -33,6 +35,8 @@ import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
+  const { connectingVm } = useSelector((state: RootState) => state.vms);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,6 +54,45 @@ export const RemoteDesktopView: React.FC = () => {
   const [customScalePercent, setCustomScalePercent] = useState<number>(100);
   const [scaleFactor, setScaleFactor] = useState<number>(1.0);
   const [nativeResolution, setNativeResolution] = useState<{ width: number; height: number }>({ width: 1920, height: 1080 });
+  const isConnectedRef = useRef(false);
+  const scaleModeRef = useRef(scaleMode);
+  const sendSizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TOOLBAR_HEIGHT = 44;
+
+  useEffect(() => {
+    scaleModeRef.current = scaleMode;
+  }, [scaleMode]);
+
+  const getContainerSize = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
+  }, []);
+
+  const getViewportSize = useCallback((fullscreen: boolean) => {
+    const screenWidth = window.screen?.width || window.innerWidth || 1920;
+    const screenHeight = window.screen?.height || window.innerHeight || 1080;
+    const width = fullscreen ? screenWidth : (window.innerWidth || screenWidth);
+    const height = Math.max(
+      1,
+      (fullscreen ? screenHeight : (window.innerHeight || screenHeight)) - TOOLBAR_HEIGHT,
+    );
+    return { width, height };
+  }, []);
+
+  const updateRemoteDisplaySize = useCallback(() => {
+    if (!clientRef.current || !isConnectedRef.current) return;
+    const size = getContainerSize();
+    if (!size) return;
+
+    if (sendSizeTimerRef.current) clearTimeout(sendSizeTimerRef.current);
+    sendSizeTimerRef.current = setTimeout(() => {
+      clientRef.current?.sendSize(size.width, size.height);
+    }, 100);
+  }, [getContainerSize]);
 
   // Apply scaling to the Guacamole display canvas and size wrapper
   const applyScale = useCallback((mode: 'fit' | '100%' | 'custom', customVal: number) => {
@@ -61,14 +104,16 @@ export const RemoteDesktopView: React.FC = () => {
 
     setNativeResolution({ width: dw, height: dh });
 
-    const cw = containerRef.current.clientWidth;
-    const ch = containerRef.current.clientHeight;
-    if (cw <= 0 || ch <= 0) return;
+    const size = getContainerSize();
+    if (!size) return;
+    const { width: cw, height: ch } = size;
 
     let targetScale = 1.0;
     if (mode === 'fit') {
-      // Scale to fit within container dimensions
-      targetScale = Math.min(cw / dw, ch / dh);
+      // When remote resolution matches the viewport, use 1:1 (no letterboxing)
+      const widthMatch = Math.abs(dw - cw) <= 2;
+      const heightMatch = Math.abs(dh - ch) <= 2;
+      targetScale = widthMatch && heightMatch ? 1.0 : Math.min(cw / dw, ch / dh);
     } else if (mode === '100%') {
       targetScale = 1.0;
     } else if (mode === 'custom') {
@@ -79,7 +124,7 @@ export const RemoteDesktopView: React.FC = () => {
       display.scale(targetScale);
       setScaleFactor(targetScale);
     }
-  }, []);
+  }, [getContainerSize]);
 
   useEffect(() => {
     applyScale(scaleMode, customScalePercent);
@@ -88,6 +133,40 @@ export const RemoteDesktopView: React.FC = () => {
   const focusDisplay = useCallback(() => {
     displayRef.current?.focus();
   }, []);
+
+  const enterFullscreen = useCallback(async () => {
+    const root = rootRef.current;
+    if (!root || document.fullscreenElement) return;
+    try {
+      await root.requestFullscreen();
+      await lockRdpKeyboard();
+      focusDisplay();
+    } catch {
+      // Some browsers require a user gesture; fullscreen toggle still works manually
+    }
+  }, [focusDisplay]);
+
+  // Auto-enter browser fullscreen once the session is connected
+  useEffect(() => {
+    if (connectionStatus === 'connected') {
+      enterFullscreen();
+    }
+  }, [connectionStatus, enterFullscreen]);
+
+  // Keep the global loader visible for at least 5 seconds after the session connects
+  useEffect(() => {
+    if (connectionStatus !== 'connected' || !connectingVm) return;
+
+    const remaining = Math.max(
+      0,
+      VM_CONNECTION_LOADER_MIN_MS - (Date.now() - connectingVm.startedAt),
+    );
+    const timer = setTimeout(() => {
+      dispatch(endVmConnection());
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [connectionStatus, connectingVm, dispatch]);
 
   // Fullscreen change listener — lock keyboard so RDP shortcuts take priority over browser
   useEffect(() => {
@@ -98,12 +177,14 @@ export const RemoteDesktopView: React.FC = () => {
       if (active) {
         await lockRdpKeyboard();
         focusDisplay();
+        setScaleMode('fit');
       } else {
         unlockRdpKeyboard();
       }
 
       setTimeout(() => {
-        applyScale(scaleMode, customScalePercent);
+        updateRemoteDisplaySize();
+        applyScale(active ? 'fit' : scaleMode, customScalePercent);
       }, 100);
     };
 
@@ -112,7 +193,7 @@ export const RemoteDesktopView: React.FC = () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       unlockRdpKeyboard();
     };
-  }, [scaleMode, customScalePercent, applyScale, focusDisplay]);
+  }, [scaleMode, customScalePercent, applyScale, focusDisplay, updateRemoteDisplaySize]);
 
   // In fullscreen, suppress browser shortcuts so keystrokes reach the RDP session
   useEffect(() => {
@@ -153,10 +234,13 @@ export const RemoteDesktopView: React.FC = () => {
       setConnectionStatus('connecting');
       setErrorMessage(null);
 
+      if (vmId) {
+        dispatch(startVmConnection({ id: vmId, name: 'Remote Desktop' }));
+      }
+
       try {
-        // Measure window size for initial resolution request
-        const initialWidth = window.innerWidth || 1920;
-        const initialHeight = (window.innerHeight ? window.innerHeight - 44 : 1080);
+        // Request full screen resolution so Windows desktop matches the viewport once we go fullscreen
+        const { width: initialWidth, height: initialHeight } = getViewportSize(true);
 
         const res = await api.post(`/vms/${vmId}/connect`, { 
           width: initialWidth, 
@@ -169,6 +253,7 @@ export const RemoteDesktopView: React.FC = () => {
 
         const { token, vm } = res.data.data;
         setVmInfo(vm);
+        dispatch(startVmConnection({ id: vm.id, name: vm.name }));
 
         // Derive clean WebSocket URL through Nginx reverse proxy
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -179,10 +264,14 @@ export const RemoteDesktopView: React.FC = () => {
         clientRef.current = client;
 
         // Guacamole state change handlers
-        client.onerror = (errorState) => {
+        client.onerror = (errorState: Guacamole.Status) => {
           console.error('Guacamole client error:', errorState);
+          const message =
+            errorState.message ||
+            `Remote desktop connection failed (error code: 0x${errorState.code.toString(16)})`;
+          setErrorMessage(message);
           setConnectionStatus('error');
-          setErrorMessage(`Guacamole error code: 0x${errorState.code.toString(16)}`);
+          dispatch(endVmConnection());
         };
 
         // Handle native file downloads (from remote to local)
@@ -211,14 +300,17 @@ export const RemoteDesktopView: React.FC = () => {
               setConnectionStatus('connecting');
               break;
             case 3: // CONNECTED
+              isConnectedRef.current = true;
               setConnectionStatus('connected');
               setTimeout(() => {
+                updateRemoteDisplaySize();
                 applyScale('fit', 100);
               }, 100);
               break;
             case 4: // DISCONNECTING
             case 5: // DISCONNECTED
-              setConnectionStatus('disconnected');
+              isConnectedRef.current = false;
+              setConnectionStatus((prev) => (prev === 'error' ? prev : 'disconnected'));
               break;
           }
         };
@@ -226,10 +318,10 @@ export const RemoteDesktopView: React.FC = () => {
         const display = client.getDisplay();
         const displayElement = display.getElement();
 
-        // Listen for display dimension changes from remote server
+        // Listen for display dimension changes from remote server (after sendSize / display-update)
         display.onresize = (w: number, h: number) => {
           setNativeResolution({ width: w, height: h });
-          applyScale('fit', 100);
+          applyScale(scaleModeRef.current, customScalePercent);
         };
 
         // Attach display element to container
@@ -274,6 +366,7 @@ export const RemoteDesktopView: React.FC = () => {
         // Observe container resize and auto-scale dynamically
         if (containerRef.current) {
           resizeObserver = new ResizeObserver(() => {
+            updateRemoteDisplaySize();
             applyScale(scaleMode, customScalePercent);
           });
           resizeObserver.observe(containerRef.current);
@@ -283,12 +376,15 @@ export const RemoteDesktopView: React.FC = () => {
         const errorResponse = err as { response?: { data?: { error?: string } }; message?: string };
         setConnectionStatus('error');
         setErrorMessage(errorResponse.response?.data?.error || errorResponse.message || 'Failed to establish connection');
+        dispatch(endVmConnection());
       }
     };
 
     initSession();
 
     return () => {
+      dispatch(endVmConnection());
+      if (sendSizeTimerRef.current) clearTimeout(sendSizeTimerRef.current);
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
@@ -298,7 +394,7 @@ export const RemoteDesktopView: React.FC = () => {
         } catch {}
       }
     };
-  }, [vmId, applyScale]);
+  }, [vmId, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
 
   const goToDashboard = () => {
     navigate('/dashboard', { state: DASHBOARD_SHOW_LIST_STATE });
@@ -351,6 +447,7 @@ export const RemoteDesktopView: React.FC = () => {
 
   const handleFitScreen = () => {
     setScaleMode('fit');
+    updateRemoteDisplaySize();
     applyScale('fit', 100);
   };
 
@@ -422,24 +519,30 @@ export const RemoteDesktopView: React.FC = () => {
   const scaledWidth = Math.round(nativeResolution.width * scaleFactor);
   const scaledHeight = Math.round(nativeResolution.height * scaleFactor);
 
-  return (
-    <div ref={rootRef} className="w-screen h-screen flex flex-col bg-background text-foreground overflow-hidden select-none">
-      {/* Session Toolbar Header */}
-      <header className="h-11 bg-background/95 backdrop-blur-md border-b px-4 flex items-center justify-between z-30 shrink-0 gap-3">
-        {/* Left Side: Back button, VM name & status */}
-        <div className="flex items-center space-x-3 min-w-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={goToDashboard}
-            className="p-1.5 h-8 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center space-x-1.5 text-xs font-medium cursor-pointer"
-            title="Return to Dashboard"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Dashboard</span>
-          </Button>
+  const fillViewport = scaleMode === 'fit';
+  const isConnecting = !!connectingVm;
 
-          <div className="h-4 w-px bg-border"></div>
+  return (
+    <div ref={rootRef} className="fixed inset-0 w-full h-full min-h-0 flex flex-col bg-background text-foreground overflow-hidden select-none">
+      {/* Session toolbar — always visible; compact in fullscreen */}
+      {!isConnecting && (
+      <header className="h-11 bg-background/95 backdrop-blur-md border-b px-4 flex items-center justify-between shrink-0 gap-3 z-40">
+        <div className="flex items-center space-x-3 min-w-0">
+          {!isFullscreen && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goToDashboard}
+                className="p-1.5 h-8 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center space-x-1.5 text-xs font-medium cursor-pointer"
+                title="Return to Dashboard"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Button>
+              <div className="h-4 w-px bg-border" />
+            </>
+          )}
 
           <div className="flex items-center space-x-2 truncate">
             <div className="p-1 bg-primary/10 text-primary rounded-md shrink-0">
@@ -452,18 +555,16 @@ export const RemoteDesktopView: React.FC = () => {
             </div>
           </div>
 
-          <Badge variant={
-            connectionStatus === 'connected' ? 'default' :
-            connectionStatus === 'connecting' ? 'secondary' : 'destructive'
-          } className={connectionStatus === 'connected' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
+          <Badge
+            variant={connectionStatus === 'connected' ? 'default' : 'destructive'}
+            className={connectionStatus === 'connected' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}
+          >
             {connectionStatus.toUpperCase()}
           </Badge>
         </div>
 
-        {/* Center / Right Controls: Scale, Resolution, Keys, Fullscreen, Disconnect */}
         <div className="flex items-center space-x-1.5 sm:space-x-2">
-          {/* Resolution & Scale Indicator */}
-          {connectionStatus === 'connected' && (
+          {!isFullscreen && connectionStatus === 'connected' && (
             <div className="hidden md:flex items-center px-2 py-0.5 bg-muted/90 border border-border/60 rounded-md text-[11px] font-mono text-muted-foreground">
               <span>{nativeResolution.width}×{nativeResolution.height}</span>
               <span className="mx-1 text-muted-foreground/50">•</span>
@@ -471,71 +572,59 @@ export const RemoteDesktopView: React.FC = () => {
             </div>
           )}
 
-          {/* Scaling Mode Toggles */}
-          <div className="flex items-center bg-muted/90 p-0.5 border border-border/60 rounded-lg">
-            <button
-              onClick={handleFitScreen}
-              className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${
-                scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              title="Fit entire desktop to screen"
-            >
-              <Scan className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Fit Screen</span>
-            </button>
-            <button
-              onClick={handleNative100}
-              className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
-                scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              title="1:1 Native Resolution"
-            >
-              1:1
-            </button>
-          </div>
+          {!isFullscreen && (
+            <>
+              <div className="flex items-center bg-muted/90 p-0.5 border border-border/60 rounded-lg">
+                <button
+                  onClick={handleFitScreen}
+                  className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${
+                    scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  title="Fit entire desktop to screen"
+                >
+                  <Scan className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Fit Screen</span>
+                </button>
+                <button
+                  onClick={handleNative100}
+                  className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                    scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  title="1:1 Native Resolution"
+                >
+                  1:1
+                </button>
+              </div>
 
-          {/* Zoom In/Out */}
-          <div className="hidden lg:flex items-center bg-muted/90 border border-border/60 rounded-lg">
-            <button
-              onClick={handleZoomOut}
-              className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-l cursor-pointer"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="px-1.5 text-[11px] font-mono text-muted-foreground min-w-9 text-center">
-              {Math.round(scaleFactor * 100)}%
-            </span>
-            <button
-              onClick={handleZoomIn}
-              className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-r cursor-pointer"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
+              <div className="hidden lg:flex items-center bg-muted/90 border border-border/60 rounded-lg">
+                <button
+                  onClick={handleZoomOut}
+                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-l cursor-pointer"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="px-1.5 text-[11px] font-mono text-muted-foreground min-w-9 text-center">
+                  {Math.round(scaleFactor * 100)}%
+                </span>
+                <button
+                  onClick={handleZoomIn}
+                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-r cursor-pointer"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </>
+          )}
 
-          {/* Upload to VM Button (triggers file picker) */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-8 px-2 text-xs font-medium space-x-1"
-            title="Upload to VM (or use Ctrl+Shift+Alt)"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Upload to VM</span>
-          </Button>
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-
-          {/* Special Keys Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 px-2 text-xs font-medium space-x-1"
-                title="Send Special Keys"
+                title="Send special keys to remote desktop"
               >
                 <Keyboard className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Keys</span>
@@ -562,25 +651,41 @@ export const RemoteDesktopView: React.FC = () => {
           </DropdownMenu>
 
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => { toggleFullscreen(); }}
-            onMouseDown={(e) => e.preventDefault()}
-            className="h-8 w-8 p-0"
-            title={isFullscreen ? 'Exit Fullscreen (toolbar button)' : 'Enter Fullscreen — RDP shortcuts take priority'}
+            onClick={() => fileInputRef.current?.click()}
+            className="h-8 px-2 text-xs font-medium space-x-1"
+            title="Upload to shared drive (or use Ctrl+Shift+Alt)"
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Upload to shared Drive</span>
           </Button>
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleReconnect}
-            className="h-8 w-8 p-0"
-            title="Reconnect Session"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </Button>
+          {!isFullscreen && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { toggleFullscreen(); }}
+                onMouseDown={(e) => e.preventDefault()}
+                className="h-8 w-8 p-0"
+                title="Enter Fullscreen — RDP shortcuts take priority"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReconnect}
+                className="h-8 w-8 p-0"
+                title="Reconnect Session"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </>
+          )}
 
           <Button
             variant="destructive"
@@ -593,25 +698,16 @@ export const RemoteDesktopView: React.FC = () => {
           </Button>
         </div>
       </header>
+      )}
 
       {/* Main Remote Display Viewport Container */}
       <main 
         ref={containerRef}
         onMouseDown={focusDisplay}
-        className={`flex-1 w-full bg-background relative flex items-center justify-center ${
+        className={`flex-1 min-h-0 w-full bg-black relative flex items-center justify-center ${
           scaleMode === 'fit' ? 'overflow-hidden' : 'overflow-auto'
         }`}
       >
-        {connectionStatus === 'connecting' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 z-20 space-y-4">
-            <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-            <div className="text-center">
-              <h3 className="text-lg font-bold">Establishing Remote Desktop Session...</h3>
-              <p className="text-xs text-muted-foreground mt-1">Negotiating display resolution and starting RDP stream</p>
-            </div>
-          </div>
-        )}
-
         {connectionStatus === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-20 p-6 space-y-4 text-center">
             <div className="p-4 bg-destructive/10 text-destructive border border-destructive/20 rounded-2xl">
@@ -621,6 +717,10 @@ export const RemoteDesktopView: React.FC = () => {
               <h3 className="text-xl font-bold">Remote Session Connection Failed</h3>
               <p className="text-sm text-destructive max-w-md mx-auto mt-2 font-mono text-xs">
                 {errorMessage || 'Unable to connect to target RDP host via Guacamole.'}
+              </p>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto mt-3">
+                Verify the VM username and password in Admin settings. If the target account is locked,
+                unlock it on the remote Windows server and try again.
               </p>
             </div>
             <div className="flex space-x-3 pt-2">
@@ -634,15 +734,37 @@ export const RemoteDesktopView: React.FC = () => {
           </div>
         )}
 
+        {connectionStatus === 'disconnected' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-20 p-6 space-y-4 text-center">
+            <div className="p-4 bg-muted text-muted-foreground border border-border rounded-2xl">
+              <Power className="w-10 h-10" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">Remote Session Disconnected</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
+                The connection to the remote desktop was closed.
+              </p>
+            </div>
+            <div className="flex space-x-3 pt-2">
+              <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
+                Reconnect
+              </Button>
+              <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
+                Return to Dashboard
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Scaled Display Container: Exact visual width and height to avoid scrollbar overflow */}
         <div 
           style={{
-            width: scaledWidth > 0 ? `${scaledWidth}px` : '100%',
-            height: scaledHeight > 0 ? `${scaledHeight}px` : '100%',
+            width: fillViewport ? '100%' : scaledWidth > 0 ? `${scaledWidth}px` : '100%',
+            height: fillViewport ? '100%' : scaledHeight > 0 ? `${scaledHeight}px` : '100%',
             position: 'relative',
             overflow: 'hidden',
           }}
-          className="shadow-2xl rounded-sm"
+          className={fillViewport ? '' : 'shadow-2xl rounded-sm'}
         >
           {/* Guacamole internal canvas mount target */}
           <div 

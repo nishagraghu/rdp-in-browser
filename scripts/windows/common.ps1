@@ -88,7 +88,7 @@ function Read-EnvFile([string]$EnvPath) {
 
         $parts = $line -split "=", 2
         if ($parts.Count -eq 2) {
-            $values[$parts[0].Trim()] = $parts[1].Trim()
+            $values[$parts[0].Trim()] = $parts[1].Trim().TrimEnd("`r")
         }
     }
 

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
-import { fetchVms } from '../../store/vmSlice';
+import { fetchVms, startVmConnection } from '../../store/vmSlice';
 import { Monitor, Play, Server } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,10 +26,12 @@ export const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!shouldAutoConnect || !singleVm) return;
+    dispatch(startVmConnection({ id: singleVm.id, name: singleVm.name }));
     navigate(`/remote/${singleVm.id}`, { replace: true });
-  }, [shouldAutoConnect, singleVm, navigate]);
+  }, [shouldAutoConnect, singleVm, navigate, dispatch]);
 
-  const handleConnect = (vmId: string) => {
+  const handleConnect = (vmId: string, vmName: string) => {
+    dispatch(startVmConnection({ id: vmId, name: vmName }));
     navigate(`/remote/${vmId}`);
   };
 
@@ -109,7 +111,7 @@ export const UserDashboard: React.FC = () => {
 
                 <div className="pt-4">
                   <Button
-                    onClick={() => handleConnect(vm.id)}
+                    onClick={() => handleConnect(vm.id, vm.name)}
                     disabled={!vm.isActive}
                     className="w-full font-semibold shadow-lg shadow-primary/20 flex items-center justify-center space-x-2 transition-all group-hover:shadow-primary/30"
                   >

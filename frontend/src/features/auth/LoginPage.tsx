@@ -16,7 +16,7 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { isLoading, error } = useSelector((state: RootState) => state.auth);
+  const { isLoggingIn, error } = useSelector((state: RootState) => state.auth);
   const successMessage = (location.state as { message?: string })?.message;
 
   const handleLogin = async (u: string, p: string) => {
@@ -38,7 +38,13 @@ export const LoginPage: React.FC = () => {
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-muted/20 px-4">
-      <Card className="w-full max-w-sm border-border/60 shadow-sm">
+      <Card className="relative w-full max-w-sm border-border/60 shadow-sm">
+        {isLoggingIn && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/90 backdrop-blur-sm">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="text-sm font-medium text-muted-foreground">Signing in...</p>
+          </div>
+        )}
         <CardHeader className="space-y-2 text-center pb-6">
           <div className="flex justify-center mb-2">
              <div className="h-10 w-10 rounded-md bg-primary/5 border flex items-center justify-center text-primary">
@@ -71,6 +77,7 @@ export const LoginPage: React.FC = () => {
                 type="text"
                 placeholder="Email address"
                 required
+                disabled={isLoggingIn}
                 value={usernameOrEmail}
                 onChange={(e) => setUsernameOrEmail(e.target.value)}
               />
@@ -81,6 +88,7 @@ export const LoginPage: React.FC = () => {
                 type="password"
                 placeholder="Password"
                 required
+                disabled={isLoggingIn}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -93,8 +101,8 @@ export const LoginPage: React.FC = () => {
                 </Link>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing In...' : 'Sign in'}
+            <Button type="submit" className="w-full" disabled={isLoggingIn}>
+              {isLoggingIn ? 'Signing In...' : 'Sign in'}
             </Button>
           </form>
 
@@ -114,6 +122,7 @@ export const LoginPage: React.FC = () => {
             <Button 
               variant="outline" 
               className="font-normal border-border/60"
+              disabled={isLoggingIn}
               onClick={() => {
                 setUsernameOrEmail('admin');
                 setPassword('admin123');
@@ -125,6 +134,7 @@ export const LoginPage: React.FC = () => {
             <Button 
               variant="outline"
               className="font-normal border-border/60"
+              disabled={isLoggingIn}
               onClick={() => {
                 setUsernameOrEmail('guest');
                 setPassword('guest123');

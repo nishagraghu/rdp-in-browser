@@ -6,6 +6,7 @@ import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction } from '../../shared';
 import { config } from '../../config/env';
+import { ensureUserDriveDirectory } from '../../utils/userDrive';
 
 const KEY = Buffer.from(
   config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'),
@@ -128,6 +129,10 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
     }
 
     const decryptedPassword = decryptVMPassword(vm.encryptedPassword);
+
+    if (vm.enableDrive && req.user?.username) {
+      ensureUserDriveDirectory(req.user.username);
+    }
 
     const token = makeGuacamoleToken({
       hostname: vm.hostname,

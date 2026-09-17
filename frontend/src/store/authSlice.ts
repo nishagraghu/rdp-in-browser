@@ -6,6 +6,7 @@ interface AuthState {
   user: UserDto | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isLoggingIn: boolean;
   isSetupRequired: boolean;
   error: string | null;
 }
@@ -14,6 +15,7 @@ const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  isLoggingIn: false,
   isSetupRequired: false,
   error: null,
 };
@@ -110,17 +112,17 @@ const authSlice = createSlice({
         state.isLoading = false;
       })
       .addCase(loginUser.pending, (state) => {
-        state.isLoading = true;
+        state.isLoggingIn = true;
         state.error = null;
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.user = action.payload;
         state.isAuthenticated = true;
-        state.isLoading = false;
+        state.isLoggingIn = false;
         state.error = null;
       })
       .addCase(loginUser.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isLoggingIn = false;
         state.error = action.payload as string;
       })
       .addCase(logoutUser.fulfilled, (state) => {

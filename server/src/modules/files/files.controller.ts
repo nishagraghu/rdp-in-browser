@@ -3,13 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { AuthenticatedRequest } from '../../middleware/auth';
-
-const UPLOADS_DIR = path.join(process.cwd(), 'drives');
-
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  fs.chmodSync(UPLOADS_DIR, 0o777);
-}
+import { ensureUserDriveDirectory } from '../../utils/userDrive';
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
@@ -18,15 +12,7 @@ const storage = multer.diskStorage({
     if (!username) {
       return cb(new Error('User not authenticated'), '');
     }
-    const userDir = path.join(UPLOADS_DIR, username);
-    if (!fs.existsSync(userDir)) {
-      fs.mkdirSync(userDir, { recursive: true });
-      fs.chownSync(userDir, 1000, 1000);
-      const downloadDir = path.join(userDir, 'Download');
-      fs.mkdirSync(downloadDir, { recursive: true });
-      fs.chownSync(downloadDir, 1000, 1000);
-    }
-    cb(null, userDir);
+    cb(null, ensureUserDriveDirectory(username));
   },
   filename: (_req, file, cb) => {
     cb(null, file.originalname);
@@ -63,14 +49,7 @@ export async function listFiles(req: AuthenticatedRequest, res: Response): Promi
     return;
   }
 
-  const userDir = path.join(UPLOADS_DIR, username);
-  if (!fs.existsSync(userDir)) {
-    fs.mkdirSync(userDir, { recursive: true });
-    fs.chownSync(userDir, 1000, 1000);
-    const downloadDir = path.join(userDir, 'Download');
-    fs.mkdirSync(downloadDir, { recursive: true });
-    fs.chownSync(downloadDir, 1000, 1000);
-  }
+  const userDir = ensureUserDriveDirectory(username);
 
   try {
     const files = fs.readdirSync(userDir);
@@ -101,9 +80,9 @@ export async function downloadFile(req: AuthenticatedRequest, res: Response): Pr
     return;
   }
 
-  // Prevent directory traversal attacks
   const safeFilename = path.basename(filename);
-  const filePath = path.join(UPLOADS_DIR, username, safeFilename);
+  const userDir = ensureUserDriveDirectory(username);
+  const filePath = path.join(userDir, safeFilename);
 
   if (!fs.existsSync(filePath)) {
     res.status(404).json({ success: false, error: 'File not found' });

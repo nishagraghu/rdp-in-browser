@@ -16,11 +16,13 @@ import { Toaster } from 'sonner';
 import { VmManagement } from './features/admin/VmManagement';
 import { AssignmentsPage } from './features/admin/AssignmentsPage';
 import { RemoteDesktopView } from './features/remote/RemoteDesktopView';
+import { VmConnectionLoader } from './components/VmConnectionLoader';
 import { UserRole } from '@rdp/shared';
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>();
   const { isAuthenticated, user, isSetupRequired } = useSelector((state: RootState) => state.auth);
+  const { connectingVm } = useSelector((state: RootState) => state.vms);
 
   useEffect(() => {
     dispatch(checkSetupStatus());
@@ -30,6 +32,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" richColors />
+      {connectingVm && <VmConnectionLoader vmName={connectingVm.name} />}
       <BrowserRouter>
         <Routes>
         {/* Public Routes */}

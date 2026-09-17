@@ -65,7 +65,7 @@ read_env_value() {
     return 1
   fi
 
-  echo "${line#*=}"
+  echo "${line#*=}" | tr -d '\r'
 }
 
 ensure_env_file() {
@@ -94,6 +94,7 @@ validate_required_env() {
     local value
     value="$(grep -E "^${name}=" "${env_file}" | tail -n 1 | cut -d'=' -f2- || true)"
     value="${value// /}"
+    value="${value//$'\r'/}"
 
     if [[ -z "${value}" ]]; then
       missing+=("${name}")
@@ -145,17 +146,20 @@ wait_for_healthy_services() {
         break
       fi
 
-      local health
-      health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}" 2>/dev/null || echo "unknown")"
-
       if [[ "${must_be_healthy}" == "1" ]]; then
+        local health
+        health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}" 2>/dev/null || echo "unknown")"
         if [[ "${health}" != "healthy" ]]; then
           all_healthy=false
           break
         fi
-      elif [[ "${health}" != "running" && "${health}" != "healthy" ]]; then
-        all_healthy=false
-        break
+      else
+        local state
+        state="$(docker inspect --format='{{.State.Status}}' "${container_id}" 2>/dev/null || echo "unknown")"
+        if [[ "${state}" != "running" ]]; then
+          all_healthy=false
+          break
+        fi
       fi
     done
 

@@ -3,6 +3,7 @@ import { hashPassword } from '../utils/password';
 import { encryptVMPassword } from '../utils/encryption';
 import { UserRole, VmProtocol } from '../shared';
 import { config } from '../config/env';
+import { ensureUserDriveDirectory } from '../utils/userDrive';
 
 export async function autoSeedDatabase(): Promise<void> {
   try {
@@ -31,6 +32,8 @@ export async function autoSeedDatabase(): Promise<void> {
       },
     });
 
+    ensureUserDriveDirectory(admin.username);
+
     const guest = await prisma.user.create({
       data: {
         name: 'Guest User',
@@ -41,6 +44,8 @@ export async function autoSeedDatabase(): Promise<void> {
         isActive: true,
       },
     });
+
+    ensureUserDriveDirectory(guest.username);
 
     const encryptedVmPass = encryptVMPassword('testpass');
     const sampleVm = await prisma.vM.create({

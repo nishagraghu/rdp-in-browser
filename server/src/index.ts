@@ -20,12 +20,15 @@ import assignmentsRoutes from './modules/assignments/assignments.routes';
 import guacamoleRoutes from './modules/guacamole/guacamole.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import filesRoutes from './modules/files/files.routes';
+import { ensureDrivesRoot } from './utils/userDrive';
 
 // Ensure data directory exists for SQLite
 const dataDir = path.dirname(path.resolve(config.DATABASE_URL.replace('file:', '')));
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
+
+ensureDrivesRoot();
 
 const app = express();
 app.set('trust proxy', 1);

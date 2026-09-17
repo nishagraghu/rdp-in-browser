@@ -1,9 +1,8 @@
 import { Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { prisma } from '../../db/prisma';
 import { hashPassword } from '../../utils/password';
 import { createAuditLog } from '../../utils/auditLogger';
+import { ensureUserDriveDirectory } from '../../utils/userDrive';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
 
@@ -169,13 +168,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
     });
 
     try {
-      const drivesDir = path.join(process.cwd(), 'drives');
-      const userDir = path.join(drivesDir, newUser.username);
-      const downloadDir = path.join(userDir, 'Download');
-      
-      fs.mkdirSync(downloadDir, { recursive: true });
-      fs.chownSync(userDir, 1000, 1000);
-      fs.chownSync(downloadDir, 1000, 1000);
+      ensureUserDriveDirectory(newUser.username);
     } catch (e) {
       console.error('Failed to create user drive directory:', e);
     }

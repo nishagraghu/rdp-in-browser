@@ -1,12 +1,15 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import api from '../api/client';
 import { VmDto } from '@rdp/shared';
+
+export const VM_CONNECTION_LOADER_MIN_MS = 5000;
 
 interface VmState {
   vms: VmDto[];
   currentVm: VmDto | null;
   isLoading: boolean;
   error: string | null;
+  connectingVm: { id: string; name: string; startedAt: number } | null;
 }
 
 const initialState: VmState = {
@@ -14,6 +17,7 @@ const initialState: VmState = {
   currentVm: null,
   isLoading: false,
   error: null,
+  connectingVm: null,
 };
 
 export const fetchVms = createAsyncThunk('vms/fetchVms', async () => {
@@ -63,6 +67,17 @@ const vmSlice = createSlice({
     clearVmError(state) {
       state.error = null;
     },
+    startVmConnection(state, action: PayloadAction<{ id: string; name: string }>) {
+      const existing = state.connectingVm;
+      state.connectingVm = {
+        ...action.payload,
+        startedAt:
+          existing?.id === action.payload.id ? existing.startedAt : Date.now(),
+      };
+    },
+    endVmConnection(state) {
+      state.connectingVm = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -95,5 +110,5 @@ const vmSlice = createSlice({
   },
 });
 
-export const { clearVmError } = vmSlice.actions;
+export const { clearVmError, startVmConnection, endVmConnection } = vmSlice.actions;
 export default vmSlice.reducer;
