@@ -11,7 +11,7 @@ services:
     environment:
       GUACD_LOG_LEVEL: info
     volumes:
-      - shared-drives:/drives
+      - ${DRIVES_PATH:-shared-drives}:/drives
     networks:
       - internal
 
@@ -28,8 +28,8 @@ services:
       GUACD_HOST: guacd
       GUACD_PORT: 4822
     volumes:
-      - server-data:/app/data
-      - shared-drives:/app/drives
+      - ${DATA_PATH:-server-data}:/app/data
+      - ${DRIVES_PATH:-shared-drives}:/app/drives
     depends_on:
       guacd:
         condition: service_started
