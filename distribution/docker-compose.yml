@@ -11,7 +11,7 @@ services:
     environment:
       GUACD_LOG_LEVEL: info
     volumes:
-      - ${DRIVES_PATH:-/mnt/windows_d}:/drives
+      - ${DRIVES_PATH:-D:/rdp_shared}:/drives
     networks:
       - internal
 
@@ -28,15 +28,15 @@ services:
       GUACD_HOST: guacd
       GUACD_PORT: 4822
     volumes:
-      - ${DATA_PATH:-server-data}:/app/data
-      - ${DRIVES_PATH:-/mnt/windows_d}:/app/drives
+      - ${DATA_PATH:-./data}:/app/data
+      - ${DRIVES_PATH:-D:/rdp_shared}:/app/drives
     depends_on:
       guacd:
         condition: service_started
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -54,7 +54,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 5

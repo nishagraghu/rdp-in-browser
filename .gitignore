@@ -7,4 +7,3 @@ server/data/*.db-journal
 server/prisma/data/
 *.tsbuildinfo
 .DS_Store
-*.zip
