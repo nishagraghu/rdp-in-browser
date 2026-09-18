@@ -44,7 +44,6 @@ export async function uploadFile(req: AuthenticatedRequest, res: Response): Prom
     return;
   }
 
-  // Ensure guacd can see files dropped via the web UI into the shared drive.
   chownForGuacd(req.file.path);
 
   res.json({
@@ -106,6 +105,23 @@ function listDriveEntries(rootDir: string, relativeDir = ''): DriveEntry[] {
   return entries;
 }
 
+function resolveSafeUserFile(username: string, relativePath: string): string | null {
+  const userDir = ensureUserDriveDirectory(username);
+  const safeRelative = path
+    .normalize(relativePath)
+    .replace(/^(\.\.(\/|\\|$))+/, '')
+    .replace(/^[/\\]+/, '');
+  const filePath = path.join(userDir, safeRelative);
+  const resolved = path.resolve(filePath);
+  const root = path.resolve(userDir);
+
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return null;
+  }
+
+  return resolved;
+}
+
 export async function listFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
   const username = req.user?.username;
   if (!username) {
@@ -137,18 +153,19 @@ export async function downloadFile(req: AuthenticatedRequest, res: Response): Pr
     return;
   }
 
-  const filename = req.params.filename;
-  if (!filename) {
-    res.status(400).json({ success: false, error: 'Filename is required' });
+  // Prefer ?path= for nested shared-drive paths; fall back to :filename for simple names.
+  const rawPath =
+    (typeof req.query.path === 'string' && req.query.path) ||
+    req.params.filename ||
+    '';
+
+  if (!rawPath) {
+    res.status(400).json({ success: false, error: 'File path is required' });
     return;
   }
 
-  // Allow nested paths under the user drive, but never escape it.
-  const userDir = ensureUserDriveDirectory(username);
-  const safeRelative = path.normalize(filename).replace(/^(\.\.(\/|\\|$))+/, '');
-  const filePath = path.join(userDir, safeRelative);
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(userDir) + path.sep) && resolved !== path.resolve(userDir)) {
+  const resolved = resolveSafeUserFile(username, rawPath);
+  if (!resolved) {
     res.status(400).json({ success: false, error: 'Invalid path' });
     return;
   }

@@ -1,22 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { UploadCloud, File as FileIcon, Folder, RefreshCw, HardDrive } from 'lucide-react';
+import { UploadCloud, File as FileIcon, Folder, RefreshCw, HardDrive, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import api from '../api/client';
-
-interface DriveEntry {
-  path: string;
-  name: string;
-  size: number;
-  isDirectory: boolean;
-  createdAt: string;
-  modifiedAt: string;
-}
-
-interface DriveListing {
-  username: string;
-  entries: DriveEntry[];
-}
+import {
+  DriveEntry,
+  downloadSharedDriveFile,
+  fetchSharedDriveEntries,
+  formatDriveSize,
+} from './SharedDriveDownloadDialog';
 
 export const FileManager: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -24,24 +16,15 @@ export const FileManager: React.FC = () => {
   const [entries, setEntries] = useState<DriveEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/files');
-      if (res.data.success) {
-        const data = res.data.data as DriveListing;
-        const list = Array.isArray(data?.entries) ? data.entries : [];
-        setUsername(data?.username || '');
-        // Files first by newest modified; directories stay visible for structure
-        setEntries(
-          [...list].sort((a, b) => {
-            if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-            return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
-          }),
-        );
-      }
+      const data = await fetchSharedDriveEntries();
+      setUsername(data.username);
+      setEntries(data.entries);
     } catch (err) {
       console.error('Failed to fetch shared drive', err);
     } finally {
@@ -52,7 +35,6 @@ export const FileManager: React.FC = () => {
   useEffect(() => {
     if (!isOpen) return;
     fetchFiles();
-    // Reflect host-folder changes while the dialog is open
     const timer = window.setInterval(fetchFiles, 4000);
     return () => window.clearInterval(timer);
   }, [isOpen, fetchFiles]);
@@ -92,12 +74,17 @@ export const FileManager: React.FC = () => {
     }
   };
 
-  const formatSize = (bytes: number) => {
-    if (bytes === 0) return '—';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  const handleDownload = async (entry: DriveEntry) => {
+    if (entry.isDirectory) return;
+    setDownloadingPath(entry.path);
+    try {
+      await downloadSharedDriveFile(entry.path);
+    } catch (err) {
+      console.error('Download failed', err);
+      alert('Failed to download file.');
+    } finally {
+      setDownloadingPath(null);
+    }
   };
 
   const filesOnly = entries.filter((e) => !e.isDirectory);
@@ -161,9 +148,9 @@ export const FileManager: React.FC = () => {
                 {entries.map((entry) => (
                   <li
                     key={entry.path}
-                    className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between gap-2 p-3 hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
                       <div className="bg-primary/10 p-2 rounded-md shrink-0">
                         {entry.isDirectory ? (
                           <Folder className="h-4 w-4 text-primary" />
@@ -171,17 +158,33 @@ export const FileManager: React.FC = () => {
                           <FileIcon className="h-4 w-4 text-primary" />
                         )}
                       </div>
-                      <div className="flex flex-col overflow-hidden">
+                      <div className="flex flex-col overflow-hidden min-w-0">
                         <span className="text-sm font-medium truncate" title={entry.path}>
                           {entry.path}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {entry.isDirectory
                             ? 'Folder'
-                            : `${formatSize(entry.size)} • ${new Date(entry.modifiedAt).toLocaleString()}`}
+                            : `${formatDriveSize(entry.size)} • ${new Date(entry.modifiedAt).toLocaleString()}`}
                         </span>
                       </div>
                     </div>
+                    {!entry.isDirectory && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Download"
+                        className="shrink-0"
+                        disabled={downloadingPath === entry.path}
+                        onClick={() => handleDownload(entry)}
+                      >
+                        {downloadingPath === entry.path ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

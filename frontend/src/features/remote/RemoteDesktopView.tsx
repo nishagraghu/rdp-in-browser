@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { 
   Monitor, 
   ArrowLeft, 
-  Maximize2, 
+  Maximize2,
+  Minimize2,
   RefreshCw, 
   Power, 
   AlertTriangle,
@@ -19,7 +20,9 @@ import {
   Scan,
   Keyboard,
   ChevronDown,
-  Upload
+  ChevronUp,
+  Upload,
+  Download
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
@@ -27,10 +30,10 @@ import {
   isBrowserShortcut,
   isUploadShortcut,
   lockRdpKeyboard,
-  shouldBlockEscapeInFullscreen,
   unlockRdpKeyboard,
 } from '@/lib/rdpKeyboard';
 import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
+import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
 
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
@@ -48,6 +51,16 @@ export const RemoteDesktopView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [vmInfo, setVmInfo] = useState<{ id: string; name: string; protocol: string; hostname: string } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const [toolbarRevealed, setToolbarRevealed] = useState(false);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+
+  // ESC long press tracking state
+  const [escProgress, setEscProgress] = useState(0);
+  const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const escIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const escLongPressTriggeredRef = useRef(false);
+  const escStartTimeRef = useRef(0);
 
   // Scaling & Resolution states
   const [scaleMode, setScaleMode] = useState<'fit' | '100%' | 'custom'>('fit');
@@ -110,7 +123,6 @@ export const RemoteDesktopView: React.FC = () => {
 
     let targetScale = 1.0;
     if (mode === 'fit') {
-      // When remote resolution matches the viewport, use 1:1 (no letterboxing)
       const widthMatch = Math.abs(dw - cw) <= 2;
       const heightMatch = Math.abs(dh - ch) <= 2;
       targetScale = widthMatch && heightMatch ? 1.0 : Math.min(cw / dw, ch / dh);
@@ -142,7 +154,7 @@ export const RemoteDesktopView: React.FC = () => {
       await lockRdpKeyboard();
       focusDisplay();
     } catch {
-      // Some browsers require a user gesture; fullscreen toggle still works manually
+      // User gesture might be needed; fallback to button
     }
   }, [focusDisplay]);
 
@@ -153,7 +165,7 @@ export const RemoteDesktopView: React.FC = () => {
     }
   }, [connectionStatus, enterFullscreen]);
 
-  // Keep the global loader visible for at least 5 seconds after the session connects
+  // Keep global loader visible for minimum time
   useEffect(() => {
     if (connectionStatus !== 'connected' || !connectingVm) return;
 
@@ -168,7 +180,7 @@ export const RemoteDesktopView: React.FC = () => {
     return () => clearTimeout(timer);
   }, [connectionStatus, connectingVm, dispatch]);
 
-  // Fullscreen change listener — lock keyboard so RDP shortcuts take priority over browser
+  // Fullscreen change listener
   useEffect(() => {
     const handleFullscreenChange = async () => {
       const active = !!document.fullscreenElement;
@@ -195,9 +207,35 @@ export const RemoteDesktopView: React.FC = () => {
     };
   }, [scaleMode, customScalePercent, applyScale, focusDisplay, updateRemoteDisplaySize]);
 
-  // In fullscreen, suppress browser shortcuts so keystrokes reach the RDP session
+  // Fullscreen: reveal toolbar when cursor moves to top edge
+  useEffect(() => {
+    if (!isFullscreen) {
+      setToolbarRevealed(true);
+      return;
+    }
+
+    setToolbarRevealed(false);
+
+    const onMove = (e: MouseEvent) => {
+      if (downloadDialogOpen) {
+        setToolbarRevealed(true);
+        return;
+      }
+      if (e.clientY <= 24) {
+        setToolbarRevealed(true);
+      } else if (e.clientY > 64) {
+        setToolbarRevealed(false);
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [isFullscreen, downloadDialogOpen]);
+
+  // Keyboard shortcut & Escape long press listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Upload shortcut: Ctrl + Shift + Alt
       if (isUploadShortcut(e)) {
         e.preventDefault();
         e.stopPropagation();
@@ -211,15 +249,79 @@ export const RemoteDesktopView: React.FC = () => {
         return;
       }
 
+      // 2. Escape Key Long-Press Handler:
+      // Single tap: passes ESC key to remote RDP VM
+      // Long press (held >= 650ms): toggles toolbar panel collapse
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!escStartTimeRef.current && !e.repeat) {
+          escStartTimeRef.current = Date.now();
+          escLongPressTriggeredRef.current = false;
+          const LONG_PRESS_MS = 650;
+
+          if (escIntervalRef.current) clearInterval(escIntervalRef.current);
+          if (escTimerRef.current) clearTimeout(escTimerRef.current);
+
+          escIntervalRef.current = setInterval(() => {
+            const elapsed = Date.now() - escStartTimeRef.current;
+            const pct = Math.min(100, Math.round((elapsed / LONG_PRESS_MS) * 100));
+            setEscProgress(pct);
+          }, 35);
+
+          escTimerRef.current = setTimeout(() => {
+            escLongPressTriggeredRef.current = true;
+            if (escIntervalRef.current) clearInterval(escIntervalRef.current);
+            setEscProgress(0);
+            escStartTimeRef.current = 0;
+
+            setIsPanelCollapsed((prev) => {
+              const next = !prev;
+              toast.info(next ? 'Top panel collapsed (Hold ESC to expand)' : 'Top panel expanded');
+              return next;
+            });
+          }, LONG_PRESS_MS);
+        }
+        return;
+      }
+
       if (!isFullscreen) return;
 
-      if (shouldBlockEscapeInFullscreen(e, isFullscreen) || isBrowserShortcut(e)) {
+      if (isBrowserShortcut(e)) {
         e.preventDefault();
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (escTimerRef.current) clearTimeout(escTimerRef.current);
+        if (escIntervalRef.current) clearInterval(escIntervalRef.current);
+        setEscProgress(0);
+        escStartTimeRef.current = 0;
+
+        if (!escLongPressTriggeredRef.current) {
+          // Short press tap: send ESC key to Guacamole RDP session
+          if (clientRef.current) {
+            clientRef.current.sendKeyEvent(1, 0xff1b); // ESC down
+            clientRef.current.sendKeyEvent(0, 0xff1b); // ESC up
+          }
+        }
+        escLongPressTriggeredRef.current = false;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('keyup', handleKeyUp, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keyup', handleKeyUp, { capture: true });
+      if (escTimerRef.current) clearTimeout(escTimerRef.current);
+      if (escIntervalRef.current) clearInterval(escIntervalRef.current);
+    };
   }, [isFullscreen]);
 
   // Initialize Guacamole session
@@ -239,7 +341,6 @@ export const RemoteDesktopView: React.FC = () => {
       }
 
       try {
-        // Request full screen resolution so Windows desktop matches the viewport once we go fullscreen
         const { width: initialWidth, height: initialHeight } = getViewportSize(true);
 
         const res = await api.post(`/vms/${vmId}/connect`, { 
@@ -255,7 +356,6 @@ export const RemoteDesktopView: React.FC = () => {
         setVmInfo(vm);
         dispatch(startVmConnection({ id: vm.id, name: vm.name }));
 
-        // Derive clean WebSocket URL through Nginx reverse proxy
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const targetWsUrl = `${wsProtocol}//${window.location.host}/ws`;
 
@@ -263,7 +363,6 @@ export const RemoteDesktopView: React.FC = () => {
         client = new Guacamole.Client(tunnel);
         clientRef.current = client;
 
-        // Guacamole state change handlers
         client.onerror = (errorState: Guacamole.Status) => {
           console.error('Guacamole client error:', errorState);
           const message =
@@ -274,8 +373,6 @@ export const RemoteDesktopView: React.FC = () => {
           dispatch(endVmConnection());
         };
 
-        // Shared-drive model: do not download to the browser.
-        // Files copied into the redirected drive appear on the host shared folder.
         client.onfile = (stream, _mimetype, filename) => {
           stream.sendAck(
             'Use the shared drive — files appear on the host folder',
@@ -288,12 +385,12 @@ export const RemoteDesktopView: React.FC = () => {
 
         client.onstatechange = (state) => {
           switch (state) {
-            case 0: // IDLE
-            case 1: // CONNECTING
-            case 2: // WAITING
+            case 0:
+            case 1:
+            case 2:
               setConnectionStatus('connecting');
               break;
-            case 3: // CONNECTED
+            case 3:
               isConnectedRef.current = true;
               setConnectionStatus('connected');
               setTimeout(() => {
@@ -301,8 +398,8 @@ export const RemoteDesktopView: React.FC = () => {
                 applyScale('fit', 100);
               }, 100);
               break;
-            case 4: // DISCONNECTING
-            case 5: // DISCONNECTED
+            case 4:
+            case 5:
               isConnectedRef.current = false;
               setConnectionStatus((prev) => (prev === 'error' ? prev : 'disconnected'));
               break;
@@ -312,19 +409,16 @@ export const RemoteDesktopView: React.FC = () => {
         const display = client.getDisplay();
         const displayElement = display.getElement();
 
-        // Listen for display dimension changes from remote server (after sendSize / display-update)
         display.onresize = (w: number, h: number) => {
           setNativeResolution({ width: w, height: h });
           applyScale(scaleModeRef.current, customScalePercent);
         };
 
-        // Attach display element to container
         if (displayRef.current) {
           displayRef.current.innerHTML = '';
           displayRef.current.appendChild(displayElement);
         }
 
-        // Handle mouse input
         const mouse = new Guacamole.Mouse(displayElement);
         const handleMouse = (mouseState: unknown) => {
           if (clientRef.current) clientRef.current.sendMouseState(mouseState as never);
@@ -332,8 +426,6 @@ export const RemoteDesktopView: React.FC = () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mouse as any).onmousedown = (mouse as any).onmouseup = (mouse as any).onmousemove = handleMouse;
 
-        // Handle keyboard input by attaching to a focusable container rather than document
-        // This prevents the keyboard listener from intercepting keys globally after navigating away.
         const keyboardTarget = displayRef.current;
         let keyboard: Guacamole.Keyboard | null = null;
         
@@ -354,10 +446,8 @@ export const RemoteDesktopView: React.FC = () => {
           };
         }
 
-        // Connect client passing encrypted session token
         client.connect(`token=${encodeURIComponent(token)}`);
 
-        // Observe container resize and auto-scale dynamically
         if (containerRef.current) {
           resizeObserver = new ResizeObserver(() => {
             updateRemoteDisplaySize();
@@ -450,7 +540,6 @@ export const RemoteDesktopView: React.FC = () => {
     applyScale('100%', 100);
   };
 
-  // Upload into the redirected shared drive (same folder as DRIVES_PATH/{username} on the host)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !clientRef.current) return;
@@ -463,7 +552,7 @@ export const RemoteDesktopView: React.FC = () => {
 
       writer.oncomplete = () => {
         stream.sendEnd();
-        toast.success(`${file.name} is on the shared drive (visible on the host folder too).`);
+        toast.success(`${file.name} is on the shared drive (visible on host folder too).`);
       };
       
       writer.onerror = () => {
@@ -475,19 +564,16 @@ export const RemoteDesktopView: React.FC = () => {
       writer.sendBlob(file);
     });
     
-    // Clear input so the same file can be uploaded again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  // Special key combinations
   const sendSpecialKey = (combination: string) => {
     const client = clientRef.current;
     if (!client) return;
 
     if (combination === 'CAD') {
-      // Ctrl + Alt + Del
       client.sendKeyEvent(1, 0xffe3); // Ctrl
       client.sendKeyEvent(1, 0xffe9); // Alt
       client.sendKeyEvent(1, 0xffff); // Delete
@@ -495,7 +581,6 @@ export const RemoteDesktopView: React.FC = () => {
       client.sendKeyEvent(0, 0xffe9);
       client.sendKeyEvent(0, 0xffe3);
     } else if (combination === 'WIN') {
-      // Windows Super Key
       client.sendKeyEvent(1, 0xffeb); // Super_L
       client.sendKeyEvent(0, 0xffeb);
     } else if (combination === 'ESC') {
@@ -509,189 +594,314 @@ export const RemoteDesktopView: React.FC = () => {
     }
   };
 
-  // Scaled dimensions for the wrapper
   const scaledWidth = Math.round(nativeResolution.width * scaleFactor);
   const scaledHeight = Math.round(nativeResolution.height * scaleFactor);
 
   const fillViewport = scaleMode === 'fit';
   const isConnecting = !!connectingVm;
+  const toolbarVisible = !isFullscreen || toolbarRevealed || downloadDialogOpen;
 
   return (
     <div ref={rootRef} className="fixed inset-0 w-full h-full min-h-0 flex flex-col bg-background text-foreground overflow-hidden select-none">
-      {/* Session toolbar — always visible; compact in fullscreen */}
-      {!isConnecting && (
-      <header className="h-11 bg-background/95 backdrop-blur-md border-b px-4 flex items-center justify-between shrink-0 gap-3 z-40">
-        <div className="flex items-center space-x-3 min-w-0">
-          {!isFullscreen && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={goToDashboard}
-                className="p-1.5 h-8 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center space-x-1.5 text-xs font-medium cursor-pointer"
-                title="Return to Dashboard"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </Button>
-              <div className="h-4 w-px bg-border" />
-            </>
-          )}
+      {/* Hidden file upload input */}
+      <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
 
-          <div className="flex items-center space-x-2 truncate">
-            <div className="p-1 bg-primary/10 text-primary rounded-md shrink-0">
-              <Monitor className="w-3.5 h-3.5" />
-            </div>
-            <div className="truncate">
-              <h2 className="text-xs sm:text-sm font-bold leading-none truncate">
-                {vmInfo?.name || 'Remote Desktop'}
-              </h2>
-            </div>
+      {/* Shared Drive Download Dialog (renders inside rootRef for Fullscreen support) */}
+      <SharedDriveDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
+        container={rootRef.current}
+      />
+
+      {/* Visual Feedback overlay for ESC Long Press */}
+      {escProgress > 0 && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background/95 border border-primary/40 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2">
+          <span className="text-xs font-semibold text-primary">Hold ESC to toggle panel...</span>
+          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-75"
+              style={{ width: `${escProgress}%` }}
+            />
           </div>
-
-          <Badge
-            variant={connectionStatus === 'connected' ? 'default' : 'destructive'}
-            className={connectionStatus === 'connected' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}
-          >
-            {connectionStatus.toUpperCase()}
-          </Badge>
         </div>
+      )}
 
-        <div className="flex items-center space-x-1.5 sm:space-x-2">
-          {!isFullscreen && connectionStatus === 'connected' && (
-            <div className="hidden md:flex items-center px-2 py-0.5 bg-muted/90 border border-border/60 rounded-md text-[11px] font-mono text-muted-foreground">
-              <span>{nativeResolution.width}×{nativeResolution.height}</span>
-              <span className="mx-1 text-muted-foreground/50">•</span>
-              <span className="text-primary font-semibold">{Math.round(scaleFactor * 100)}%</span>
-            </div>
-          )}
-
-          {!isFullscreen && (
-            <>
-              <div className="flex items-center bg-muted/90 p-0.5 border border-border/60 rounded-lg">
-                <button
-                  onClick={handleFitScreen}
-                  className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${
-                    scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  title="Fit entire desktop to screen"
-                >
-                  <Scan className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Fit Screen</span>
-                </button>
-                <button
-                  onClick={handleNative100}
-                  className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
-                    scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  title="1:1 Native Resolution"
-                >
-                  1:1
-                </button>
-              </div>
-
-              <div className="hidden lg:flex items-center bg-muted/90 border border-border/60 rounded-lg">
-                <button
-                  onClick={handleZoomOut}
-                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-l cursor-pointer"
-                  title="Zoom Out"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <span className="px-1.5 text-[11px] font-mono text-muted-foreground min-w-9 text-center">
-                  {Math.round(scaleFactor * 100)}%
-                </span>
-                <button
-                  onClick={handleZoomIn}
-                  className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-r cursor-pointer"
-                  title="Zoom In"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </>
-          )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-xs font-medium space-x-1"
-                title="Send special keys to remote desktop"
-              >
-                <Keyboard className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Keys</span>
-                <ChevronDown className="w-3 h-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 text-xs">
-              <DropdownMenuItem onClick={() => sendSpecialKey('CAD')} className="justify-between cursor-pointer">
-                <span>Ctrl + Alt + Del</span>
-                <span className="text-[10px] text-muted-foreground font-mono">Unlock</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => sendSpecialKey('WIN')} className="justify-between cursor-pointer">
-                <span>Windows Key</span>
-                <span className="text-[10px] text-muted-foreground font-mono">Start</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => sendSpecialKey('TAB')} className="justify-between cursor-pointer">
-                <span>Alt + Tab</span>
-                <span className="text-[10px] text-muted-foreground font-mono">Switch</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => sendSpecialKey('ESC')} className="justify-between cursor-pointer">
-                <span>Escape</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+      {/* Floating Action Bar when Top Panel is Collapsed (Works in Fullscreen & Windowed Mode) */}
+      {!isConnecting && isPanelCollapsed && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center bg-background/90 backdrop-blur-md border border-border/80 rounded-full px-3 py-1.5 shadow-2xl gap-2 transition-all hover:bg-background/95">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            className="h-8 px-2 text-xs font-medium space-x-1"
-            title="Save file to shared drive (Ctrl+Shift+Alt) — appears on the host folder"
+            className="h-7 px-2.5 text-xs font-medium gap-1.5 rounded-full hover:bg-primary/10 hover:text-primary"
+            title="Upload file to shared drive"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Upload to Shared Drive</span>
+            <span>Upload</span>
           </Button>
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-
-          {!isFullscreen && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { toggleFullscreen(); }}
-                onMouseDown={(e) => e.preventDefault()}
-                className="h-8 w-8 p-0"
-                title="Enter Fullscreen — RDP shortcuts take priority"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleReconnect}
-                className="h-8 w-8 p-0"
-                title="Reconnect Session"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-            </>
-          )}
 
           <Button
-            variant="destructive"
+            variant="ghost"
+            size="sm"
+            onClick={() => setDownloadDialogOpen(true)}
+            className="h-7 px-2.5 text-xs font-medium gap-1.5 rounded-full hover:bg-primary/10 hover:text-primary"
+            title="Browse and download files from shared drive"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download</span>
+          </Button>
+
+          <div className="h-3.5 w-px bg-border/80" />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsPanelCollapsed(false)}
+            className="h-7 px-2 text-xs font-medium gap-1 rounded-full text-muted-foreground hover:text-foreground"
+            title="Expand Full Toolbar (or Hold ESC key)"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Toolbar</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleFullscreen}
+            className="h-7 w-7 p-0 rounded-full text-muted-foreground hover:text-foreground"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </Button>
+
+          <Button
+            variant="ghost"
             size="sm"
             onClick={handleDisconnect}
-            className="h-8 px-2.5 text-xs font-semibold space-x-1"
+            className="h-7 w-7 p-0 rounded-full text-destructive hover:bg-destructive/10"
+            title="Disconnect"
           >
             <Power className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Disconnect</span>
           </Button>
         </div>
-      </header>
+      )}
+
+      {/* Invisible top hit zone — reveal toolbar when cursor reaches top in fullscreen */}
+      {!isConnecting && isFullscreen && !toolbarVisible && !isPanelCollapsed && (
+        <div
+          className="absolute top-0 left-0 right-0 h-4 z-50"
+          onMouseEnter={() => setToolbarRevealed(true)}
+          aria-hidden
+        />
+      )}
+
+      {/* Main Session Toolbar — full width windowed; 50% centered in fullscreen */}
+      {!isConnecting && !isPanelCollapsed && (
+        <header
+          className={`h-11 bg-background/95 backdrop-blur-md border px-4 flex items-center justify-between gap-3 z-40 transition-transform duration-200 ease-out ${
+            isFullscreen
+              ? `absolute top-2 left-1/2 w-1/2 max-w-[960px] -translate-x-1/2 rounded-lg shadow-lg ${
+                  toolbarVisible ? 'translate-y-0' : '-translate-y-[calc(100%+0.5rem)] pointer-events-none'
+                }`
+              : 'relative shrink-0 w-full border-x-0 border-t-0 rounded-none'
+          }`}
+          onMouseEnter={() => {
+            if (isFullscreen) setToolbarRevealed(true);
+          }}
+          onMouseLeave={() => {
+            if (isFullscreen && !downloadDialogOpen) setToolbarRevealed(false);
+          }}
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            {!isFullscreen && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToDashboard}
+                  className="p-1.5 h-8 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center space-x-1.5 text-xs font-medium cursor-pointer"
+                  title="Return to Dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Dashboard</span>
+                </Button>
+                <div className="h-4 w-px bg-border" />
+              </>
+            )}
+
+            <div className="flex items-center space-x-2 truncate">
+              <div className="p-1 bg-primary/10 text-primary rounded-md shrink-0">
+                <Monitor className="w-3.5 h-3.5" />
+              </div>
+              <div className="truncate">
+                <h2 className="text-xs sm:text-sm font-bold leading-none truncate">
+                  {vmInfo?.name || 'Remote Desktop'}
+                </h2>
+              </div>
+            </div>
+
+            <Badge
+              variant={connectionStatus === 'connected' ? 'default' : 'destructive'}
+              className={connectionStatus === 'connected' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}
+            >
+              {connectionStatus.toUpperCase()}
+            </Badge>
+          </div>
+
+          <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+            {connectionStatus === 'connected' && (
+              <div className="hidden md:flex items-center px-2 py-0.5 bg-muted/90 border border-border/60 rounded-md text-[11px] font-mono text-muted-foreground">
+                <span>{nativeResolution.width}×{nativeResolution.height}</span>
+                <span className="mx-1 text-muted-foreground/50">•</span>
+                <span className="text-primary font-semibold">{Math.round(scaleFactor * 100)}%</span>
+              </div>
+            )}
+
+            {!isFullscreen && (
+              <>
+                <div className="flex items-center bg-muted/90 p-0.5 border border-border/60 rounded-lg">
+                  <button
+                    onClick={handleFitScreen}
+                    className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${
+                      scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title="Fit entire desktop to screen"
+                  >
+                    <Scan className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Fit Screen</span>
+                  </button>
+                  <button
+                    onClick={handleNative100}
+                    className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                      scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title="1:1 Native Resolution"
+                  >
+                    1:1
+                  </button>
+                </div>
+
+                <div className="hidden lg:flex items-center bg-muted/90 border border-border/60 rounded-lg">
+                  <button
+                    onClick={handleZoomOut}
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-l cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="px-1.5 text-[11px] font-mono text-muted-foreground min-w-9 text-center">
+                    {Math.round(scaleFactor * 100)}%
+                  </span>
+                  <button
+                    onClick={handleZoomIn}
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-r cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2 text-xs font-medium space-x-1"
+                  title="Send special keys to remote desktop"
+                >
+                  <Keyboard className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Keys</span>
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44 text-xs">
+                <DropdownMenuItem onClick={() => sendSpecialKey('CAD')} className="justify-between cursor-pointer">
+                  <span>Ctrl + Alt + Del</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">Unlock</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => sendSpecialKey('WIN')} className="justify-between cursor-pointer">
+                  <span>Windows Key</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">Start</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => sendSpecialKey('TAB')} className="justify-between cursor-pointer">
+                  <span>Alt + Tab</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">Switch</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => sendSpecialKey('ESC')} className="justify-between cursor-pointer">
+                  <span>Escape</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Upload Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-8 px-2 text-xs font-medium space-x-1"
+              title="Save file to shared drive (Ctrl+Shift+Alt) — appears on host folder"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Upload</span>
+            </Button>
+
+            {/* Download Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDownloadDialogOpen(true)}
+              className="h-8 px-2 text-xs font-medium space-x-1"
+              title="Browse and download files from shared drive"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Download</span>
+            </Button>
+
+            {/* Collapse Panel Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsPanelCollapsed(true)}
+              className="h-8 w-8 p-0"
+              title="Collapse Panel (or Hold ESC)"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { toggleFullscreen(); }}
+              onMouseDown={(e) => e.preventDefault()}
+              className="h-8 w-8 p-0"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen — RDP shortcuts take priority'}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReconnect}
+              className="h-8 w-8 p-0"
+              title="Reconnect Session"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDisconnect}
+              className="h-8 px-2.5 text-xs font-semibold space-x-1"
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Disconnect</span>
+            </Button>
+          </div>
+        </header>
       )}
 
       {/* Main Remote Display Viewport Container */}
@@ -713,7 +923,7 @@ export const RemoteDesktopView: React.FC = () => {
                 {errorMessage || 'Unable to connect to target RDP host via Guacamole.'}
               </p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto mt-3">
-                Verify the VM username and password in Admin settings. If the target account is locked,
+                Verify the VM username and password in Admin settings. If target account is locked,
                 unlock it on the remote Windows server and try again.
               </p>
             </div>
@@ -750,7 +960,7 @@ export const RemoteDesktopView: React.FC = () => {
           </div>
         )}
 
-        {/* Scaled Display Container: Exact visual width and height to avoid scrollbar overflow */}
+        {/* Scaled Display Container */}
         <div 
           style={{
             width: fillViewport ? '100%' : scaledWidth > 0 ? `${scaledWidth}px` : '100%',
