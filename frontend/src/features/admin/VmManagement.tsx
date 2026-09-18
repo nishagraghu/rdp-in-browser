@@ -619,34 +619,29 @@ export const VmManagement: React.FC = () => {
 
               {/* Drive */}
               <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
-                <h4 className="text-sm font-medium mb-3">Drive</h4>
+                <h4 className="text-sm font-medium mb-3">Shared Drive</h4>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Maps to the host folder (<code className="text-[10px]">DRIVES_PATH/&#123;username&#125;</code>).
+                  Files copied in the remote session appear on the host; files placed on the host appear in the session.
+                </p>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', !!c)} />
-                  <Label htmlFor="enableDrive" className="font-normal text-xs">Enable drive</Label>
+                  <Label htmlFor="enableDrive" className="font-normal text-xs">Enable shared drive</Label>
                 </div>
                 {formik.values.enableDrive && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6 mt-4">
                     <div className="space-y-1">
-                      <Label htmlFor="driveName" className="text-xs">Drive name</Label>
-                      <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="drivePath" className="text-xs">Drive path</Label>
-                      <Input id="drivePath" name="drivePath" value={formik.values.drivePath} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
+                      <Label htmlFor="driveName" className="text-xs">Drive name (in remote session)</Label>
+                      <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Shared Drive" className="h-7 text-xs" />
                     </div>
                     <div className="flex flex-col gap-3 col-span-1 sm:col-span-2">
                       <div className="flex items-center space-x-2">
-                        <Checkbox id="disableFileDownload" checked={formik.values.disableFileDownload} onCheckedChange={c => formik.setFieldValue('disableFileDownload', !!c)} />
-                        <Label htmlFor="disableFileDownload" className="font-normal text-xs">Disable file download</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
                         <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', !!c)} />
-                        <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable file upload</Label>
+                        <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable browser upload into shared drive</Label>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="createDrivePath" checked={formik.values.createDrivePath} onCheckedChange={c => formik.setFieldValue('createDrivePath', !!c)} />
-                        <Label htmlFor="createDrivePath" className="font-normal text-xs">Automatically create drive</Label>
-                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Browser downloads are not used — transfer is only via the shared host folder.
+                      </p>
                     </div>
                   </div>
                 )}

@@ -31,7 +31,9 @@ services:
       GUACD_HOST: guacd
       GUACD_PORT: 4822
     volumes:
-      - ${DATA_PATH:-./data}:/app/data
+      # SQLite DB + app data (Docker named volume)
+      - server-data:/app/data
+      # Shared drive files (host folder, same as guacd)
       - ${DRIVES_PATH:-D:/rdp_shared}:/app/drives
     depends_on:
       guacd:
@@ -73,5 +75,3 @@ networks:
 volumes:
   server-data:
     name: rdp-server-data
-  shared-drives:
-    name: rdp-shared-drives

@@ -226,7 +226,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Persistent data lives in Docker volumes `rdp-server-data` and `rdp-shared-drives`.
+Persistent data lives in Docker volume `rdp-server-data` (SQLite). Shared drive files live on the host path set by `DRIVES_PATH` (default `D:/rdp_shared`).
 
 ---
 

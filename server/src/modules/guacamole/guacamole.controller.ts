@@ -63,7 +63,9 @@ function makeGuacamoleToken(params: {
     if (params.driveName) settings['drive-name'] = params.driveName;
     if (params.drivePath) settings['drive-path'] = params.drivePath;
     if (params.createDrivePath) settings['create-drive-path'] = 'true';
-    if (params.disableFileDownload) settings['disable-download'] = 'true';
+    // Shared-drive model: files land on the host folder via drive redirect.
+    // Never stream a separate browser download — disable Guacamole download channel.
+    settings['disable-download'] = 'true';
     if (params.disableFileUpload) settings['disable-upload'] = 'true';
   }
   if (params.staticChannelNames) {
@@ -148,8 +150,9 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       enablePrinting: vm.enablePrinting,
       printerName: vm.printerName,
       enableDrive: vm.enableDrive,
-      driveName: vm.driveName || 'Guacamole',
-      disableFileDownload: vm.disableFileDownload,
+      driveName: vm.driveName || 'Shared Drive',
+      // Browser download channel is unused; host shared folder is the transfer path.
+      disableFileDownload: true,
       disableFileUpload: vm.disableFileUpload,
       drivePath: vm.enableDrive ? `/drives/${req.user?.username}` : undefined,
       createDrivePath: vm.enableDrive ? true : undefined,

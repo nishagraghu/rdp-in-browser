@@ -248,8 +248,8 @@ function Show-ApplicationInfo {
     Write-Host " First-time setup: http://localhost:$httpPort/setup"
     Write-Host " Public URL hint : $corsOrigin"
     Write-Host ""
-    Write-Host " Persistent data : Docker volume 'rdp-server-data'"
-    Write-Host " Shared drives   : Docker volume 'rdp-shared-drives'"
+    Write-Host " Persistent data : Docker volume 'rdp-server-data' (SQLite)"
+    Write-Host " Shared drives   : Host path from DRIVES_PATH (default D:/rdp_shared)"
     Write-Host "==================================================" -ForegroundColor Green
 }
 

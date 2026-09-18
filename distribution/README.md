@@ -101,7 +101,7 @@ Health check: **http://localhost/health** should return `ok`.
 | Logs | `docker compose logs -f` |
 | Update to latest images | `docker compose pull && docker compose up -d` |
 
-Data is stored in Docker volumes (`rdp-server-data`, `rdp-shared-drives`) and survives restarts.
+Data is stored in Docker volume `rdp-server-data` (SQLite) and the host shared-drive path from `DRIVES_PATH`, and survives restarts.
 
 ---
 

@@ -191,8 +191,8 @@ show_application_info() {
   echo " First-time setup: http://localhost:${http_port}/setup"
   echo " Public URL hint : ${cors_origin}"
   echo ""
-  echo " Persistent data : Docker volume 'rdp-server-data'"
-  echo " Shared drives   : Docker volume 'rdp-shared-drives'"
+  echo " Persistent data : Docker volume 'rdp-server-data' (SQLite)"
+  echo " Shared drives   : Host path from DRIVES_PATH (default D:/rdp_shared)"
   echo "=================================================="
 }
 

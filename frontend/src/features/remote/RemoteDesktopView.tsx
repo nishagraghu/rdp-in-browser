@@ -274,22 +274,16 @@ export const RemoteDesktopView: React.FC = () => {
           dispatch(endVmConnection());
         };
 
-        // Handle native file downloads (from remote to local)
-        client.onfile = (stream, mimetype, filename) => {
-          toast.info(`Downloading file: ${filename}...`);
-          const reader = new Guacamole.BlobReader(stream, mimetype);
-          reader.onend = () => {
-             const blob = reader.getBlob();
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement('a');
-             a.href = url;
-             a.download = filename;
-             document.body.appendChild(a);
-             a.click();
-             document.body.removeChild(a);
-             setTimeout(() => URL.revokeObjectURL(url), 1000);
-          };
-          stream.sendAck('OK', Guacamole.Status.Code.SUCCESS);
+        // Shared-drive model: do not download to the browser.
+        // Files copied into the redirected drive appear on the host shared folder.
+        client.onfile = (stream, _mimetype, filename) => {
+          stream.sendAck(
+            'Use the shared drive — files appear on the host folder',
+            Guacamole.Status.Code.UNSUPPORTED,
+          );
+          toast.info(
+            `"${filename}" stays on the shared drive — open Shared Drive or the host folder to view it.`,
+          );
         };
 
         client.onstatechange = (state) => {
@@ -456,7 +450,7 @@ export const RemoteDesktopView: React.FC = () => {
     applyScale('100%', 100);
   };
 
-  // Handle native file uploads (from local to remote)
+  // Upload into the redirected shared drive (same folder as DRIVES_PATH/{username} on the host)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !clientRef.current) return;
@@ -465,17 +459,17 @@ export const RemoteDesktopView: React.FC = () => {
       const stream = clientRef.current!.createFileStream(file.type || 'application/octet-stream', file.name);
       const writer = new Guacamole.BlobWriter(stream);
       
-      toast.info(`Uploading file: ${file.name}...`);
+      toast.info(`Saving ${file.name} to shared drive...`);
 
       writer.oncomplete = () => {
         stream.sendEnd();
-        toast.success(`File ${file.name} uploaded successfully!`);
+        toast.success(`${file.name} is on the shared drive (visible on the host folder too).`);
       };
       
       writer.onerror = () => {
         console.error(`Failed to upload ${file.name}`);
         stream.sendEnd();
-        toast.error(`Failed to upload ${file.name}`);
+        toast.error(`Failed to save ${file.name} to shared drive`);
       };
       
       writer.sendBlob(file);
@@ -655,10 +649,10 @@ export const RemoteDesktopView: React.FC = () => {
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             className="h-8 px-2 text-xs font-medium space-x-1"
-            title="Upload to shared drive (or use Ctrl+Shift+Alt)"
+            title="Save file to shared drive (Ctrl+Shift+Alt) — appears on the host folder"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Upload to shared Drive</span>
+            <span className="hidden sm:inline">Upload to Shared Drive</span>
           </Button>
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
 
