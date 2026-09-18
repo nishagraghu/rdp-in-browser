@@ -2,7 +2,9 @@
 
 Browser-based RDP client powered by Apache Guacamole.
 
-**Production deployment:** see [README-PRODUCTION.md](README-PRODUCTION.md).
+**External users / customers:** see [README-EXTERNAL.md](README-EXTERNAL.md) and [distribution/README.md](distribution/README.md).
+
+**Production deployment (from source):** see [README-PRODUCTION.md](README-PRODUCTION.md).
 
 **Customer distribution (no source code):** see [DISTRIBUTION-GUIDE.md](DISTRIBUTION-GUIDE.md) and the `distribution/` folder.
 

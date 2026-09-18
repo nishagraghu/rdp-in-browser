@@ -23,11 +23,17 @@ validate_required_env
 http_port="$(read_env_value HTTP_PORT || echo "80")"
 check_port_available "${http_port}" || exit 1
 
+step "Pulling Docker images (installs any that are not on this system)"
+# Downloads guacd and any registry images (BACKEND_IMAGE / FRONTEND_IMAGE).
+# Ignore failures for local-only tags so the next build step can create them.
+compose pull --ignore-pull-failures || true
+
 step "Building production Docker images (if needed)"
 compose build
 
 step "Starting application stack"
-compose up -d --remove-orphans
+# --pull missing: if an image still is not local, pull it before starting
+compose up -d --remove-orphans --pull missing
 
 if ! wait_for_healthy_services 180; then
   compose ps
