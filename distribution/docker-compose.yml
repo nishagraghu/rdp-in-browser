@@ -24,7 +24,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3001}
-      DATABASE_URL: ${DATABASE_URL:-file:./data/app.db}
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/app.db}
       GUACD_HOST: guacd
       GUACD_PORT: 4822
     volumes:
