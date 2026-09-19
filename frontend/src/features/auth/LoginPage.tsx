@@ -116,12 +116,7 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-6 text-center text-xs">
-            <span className="text-muted-foreground">Don't have an account? </span>
-            <Link to="#" className="font-medium hover:underline text-foreground">
-              Sign up
-            </Link>
-          </div>
+       
         </CardContent>
       </Card>
 
