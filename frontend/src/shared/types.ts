@@ -41,6 +41,27 @@ export interface VmDto {
   createDrivePath?: boolean;
   staticChannelNames?: string | null;
 
+  // Display (Guacamole RDP)
+  displayWidth?: number | null;
+  displayHeight?: number | null;
+  dpi?: number | null;
+  colorDepth?: number;
+  forceLossless?: boolean;
+  resizeMethod?: string;
+  readOnly?: boolean;
+
+  // Performance (Guacamole RDP)
+  enableWallpaper?: boolean;
+  enableTheming?: boolean;
+  enableFontSmoothing?: boolean;
+  enableFullWindowDrag?: boolean;
+  enableDesktopComposition?: boolean;
+  enableMenuAnimations?: boolean;
+  disableBitmapCaching?: boolean;
+  disableOffscreenCaching?: boolean;
+  disableGlyphCaching?: boolean;
+  disableGfx?: boolean;
+
   assignedUsers?: UserDto[];
   _count?: {
     assignments: number;

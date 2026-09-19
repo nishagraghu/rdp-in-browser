@@ -57,6 +57,27 @@ model VM {
   
   // Channels
   staticChannelNames    String?
+
+  // Display (Guacamole RDP)
+  displayWidth          Int?
+  displayHeight         Int?
+  dpi                   Int?
+  colorDepth            Int      @default(32)
+  forceLossless         Boolean  @default(false)
+  resizeMethod          String   @default("display-update")
+  readOnly              Boolean  @default(false)
+
+  // Performance (Guacamole RDP)
+  enableWallpaper           Boolean @default(false)
+  enableTheming             Boolean @default(false)
+  enableFontSmoothing       Boolean @default(true)
+  enableFullWindowDrag      Boolean @default(false)
+  enableDesktopComposition  Boolean @default(false)
+  enableMenuAnimations      Boolean @default(false)
+  disableBitmapCaching      Boolean @default(false)
+  disableOffscreenCaching   Boolean @default(false)
+  disableGlyphCaching       Boolean @default(false)
+  disableGfx                Boolean @default(false)
 }
 
 model VMUserAssignment {

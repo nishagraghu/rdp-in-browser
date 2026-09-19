@@ -131,7 +131,11 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, assignedUserIds,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
+      enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
+      disableOffscreenCaching, disableGlyphCaching, disableGfx,
     } = req.body;
 
     if (!name || !hostname || !username || !password) {
@@ -143,6 +147,12 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
     const vmPort = port ? parseInt(String(port), 10) : 3389;
 
     const encryptedPassword = encryptVMPassword(String(password));
+
+    const parseOptionalInt = (value: unknown): number | null => {
+      if (value === undefined || value === null || value === '') return null;
+      const n = parseInt(String(value), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
 
     const newVm = await prisma.vM.create({
       data: {
@@ -167,6 +177,23 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         drivePath: drivePath ? String(drivePath).trim() : null,
         createDrivePath: Boolean(createDrivePath),
         staticChannelNames: staticChannelNames ? String(staticChannelNames).trim() : null,
+        displayWidth: parseOptionalInt(displayWidth),
+        displayHeight: parseOptionalInt(displayHeight),
+        dpi: parseOptionalInt(dpi),
+        colorDepth: colorDepth ? parseInt(String(colorDepth), 10) : 32,
+        forceLossless: Boolean(forceLossless),
+        resizeMethod: resizeMethod === 'reconnect' ? 'reconnect' : 'display-update',
+        readOnly: Boolean(readOnly),
+        enableWallpaper: Boolean(enableWallpaper),
+        enableTheming: Boolean(enableTheming),
+        enableFontSmoothing: enableFontSmoothing !== undefined ? Boolean(enableFontSmoothing) : true,
+        enableFullWindowDrag: Boolean(enableFullWindowDrag),
+        enableDesktopComposition: Boolean(enableDesktopComposition),
+        enableMenuAnimations: Boolean(enableMenuAnimations),
+        disableBitmapCaching: Boolean(disableBitmapCaching),
+        disableOffscreenCaching: Boolean(disableOffscreenCaching),
+        disableGlyphCaching: Boolean(disableGlyphCaching),
+        disableGfx: Boolean(disableGfx),
       },
     });
 
@@ -210,7 +237,11 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, isActive,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
+      enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
+      disableOffscreenCaching, disableGlyphCaching, disableGfx,
     } = req.body;
 
     const vm = await prisma.vM.findUnique({ where: { id } });
@@ -218,6 +249,12 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       res.status(404).json({ success: false, error: 'VM not found' });
       return;
     }
+
+    const parseOptionalInt = (value: unknown): number | null => {
+      if (value === undefined || value === null || value === '') return null;
+      const n = parseInt(String(value), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
 
     const updateData: Record<string, unknown> = {};
 
@@ -246,6 +283,27 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (createDrivePath !== undefined) updateData.createDrivePath = Boolean(createDrivePath);
     
     if (staticChannelNames !== undefined) updateData.staticChannelNames = staticChannelNames ? String(staticChannelNames).trim() : null;
+
+    if (displayWidth !== undefined) updateData.displayWidth = parseOptionalInt(displayWidth);
+    if (displayHeight !== undefined) updateData.displayHeight = parseOptionalInt(displayHeight);
+    if (dpi !== undefined) updateData.dpi = parseOptionalInt(dpi);
+    if (colorDepth !== undefined) updateData.colorDepth = parseInt(String(colorDepth), 10) || 32;
+    if (forceLossless !== undefined) updateData.forceLossless = Boolean(forceLossless);
+    if (resizeMethod !== undefined) {
+      updateData.resizeMethod = resizeMethod === 'reconnect' ? 'reconnect' : 'display-update';
+    }
+    if (readOnly !== undefined) updateData.readOnly = Boolean(readOnly);
+
+    if (enableWallpaper !== undefined) updateData.enableWallpaper = Boolean(enableWallpaper);
+    if (enableTheming !== undefined) updateData.enableTheming = Boolean(enableTheming);
+    if (enableFontSmoothing !== undefined) updateData.enableFontSmoothing = Boolean(enableFontSmoothing);
+    if (enableFullWindowDrag !== undefined) updateData.enableFullWindowDrag = Boolean(enableFullWindowDrag);
+    if (enableDesktopComposition !== undefined) updateData.enableDesktopComposition = Boolean(enableDesktopComposition);
+    if (enableMenuAnimations !== undefined) updateData.enableMenuAnimations = Boolean(enableMenuAnimations);
+    if (disableBitmapCaching !== undefined) updateData.disableBitmapCaching = Boolean(disableBitmapCaching);
+    if (disableOffscreenCaching !== undefined) updateData.disableOffscreenCaching = Boolean(disableOffscreenCaching);
+    if (disableGlyphCaching !== undefined) updateData.disableGlyphCaching = Boolean(disableGlyphCaching);
+    if (disableGfx !== undefined) updateData.disableGfx = Boolean(disableGfx);
 
     const updated = await prisma.vM.update({
       where: { id },

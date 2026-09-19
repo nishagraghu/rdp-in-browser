@@ -82,6 +82,23 @@ export const VmManagement: React.FC = () => {
       drivePath: '',
       createDrivePath: false,
       staticChannelNames: '',
+      displayWidth: '',
+      displayHeight: '',
+      dpi: '',
+      colorDepth: '32',
+      forceLossless: false,
+      resizeMethod: 'display-update',
+      readOnly: false,
+      enableWallpaper: false,
+      enableTheming: false,
+      enableFontSmoothing: true,
+      enableFullWindowDrag: false,
+      enableDesktopComposition: false,
+      enableMenuAnimations: false,
+      disableBitmapCaching: false,
+      disableOffscreenCaching: false,
+      disableGlyphCaching: false,
+      disableGfx: false,
     },
     validationSchema: yup.object({
       name: yup.string().required('VM Display Name is required'),
@@ -96,6 +113,12 @@ export const VmManagement: React.FC = () => {
     onSubmit: async (values) => {
       setModalError(null);
       const parsedPort = parseInt(values.port, 10) || parseInt(getDefaultPort(values.protocol), 10);
+      const parseOptionalInt = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const n = parseInt(trimmed, 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
       
       const payload: Record<string, any> = {
         name: values.name.trim(),
@@ -117,6 +140,23 @@ export const VmManagement: React.FC = () => {
         drivePath: values.drivePath.trim() || undefined,
         createDrivePath: values.createDrivePath,
         staticChannelNames: values.staticChannelNames.trim() || undefined,
+        displayWidth: parseOptionalInt(values.displayWidth),
+        displayHeight: parseOptionalInt(values.displayHeight),
+        dpi: parseOptionalInt(values.dpi),
+        colorDepth: parseInt(values.colorDepth, 10) || 32,
+        forceLossless: values.forceLossless,
+        resizeMethod: values.resizeMethod,
+        readOnly: values.readOnly,
+        enableWallpaper: values.enableWallpaper,
+        enableTheming: values.enableTheming,
+        enableFontSmoothing: values.enableFontSmoothing,
+        enableFullWindowDrag: values.enableFullWindowDrag,
+        enableDesktopComposition: values.enableDesktopComposition,
+        enableMenuAnimations: values.enableMenuAnimations,
+        disableBitmapCaching: values.disableBitmapCaching,
+        disableOffscreenCaching: values.disableOffscreenCaching,
+        disableGlyphCaching: values.disableGlyphCaching,
+        disableGfx: values.disableGfx,
       };
 
       if (values.password) {
@@ -182,6 +222,23 @@ export const VmManagement: React.FC = () => {
       drivePath: vm.drivePath || '',
       createDrivePath: !!vm.createDrivePath,
       staticChannelNames: vm.staticChannelNames || '',
+      displayWidth: vm.displayWidth ? String(vm.displayWidth) : '',
+      displayHeight: vm.displayHeight ? String(vm.displayHeight) : '',
+      dpi: vm.dpi ? String(vm.dpi) : '',
+      colorDepth: String(vm.colorDepth || 32),
+      forceLossless: !!vm.forceLossless,
+      resizeMethod: vm.resizeMethod === 'reconnect' ? 'reconnect' : 'display-update',
+      readOnly: !!vm.readOnly,
+      enableWallpaper: !!vm.enableWallpaper,
+      enableTheming: !!vm.enableTheming,
+      enableFontSmoothing: vm.enableFontSmoothing !== false,
+      enableFullWindowDrag: !!vm.enableFullWindowDrag,
+      enableDesktopComposition: !!vm.enableDesktopComposition,
+      enableMenuAnimations: !!vm.enableMenuAnimations,
+      disableBitmapCaching: !!vm.disableBitmapCaching,
+      disableOffscreenCaching: !!vm.disableOffscreenCaching,
+      disableGlyphCaching: !!vm.disableGlyphCaching,
+      disableGfx: !!vm.disableGfx,
     });
     const assignedIds = vm.assignedUsers?.map((u: UserDto) => u.id) || [];
     setSelectedUserIds(assignedIds);
@@ -575,6 +632,124 @@ export const VmManagement: React.FC = () => {
                   onBlur={formik.handleBlur}
                   placeholder="WORKGROUP"
                 />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <Label className="flex items-center gap-1.5 mb-2 text-primary font-semibold">
+                Display
+              </Label>
+              <div className="space-y-3 bg-muted/20 p-3 rounded-md border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="displayWidth" className="text-xs">Width</Label>
+                    <Input
+                      id="displayWidth"
+                      name="displayWidth"
+                      inputMode="numeric"
+                      value={formik.values.displayWidth}
+                      onChange={(e) => formik.setFieldValue('displayWidth', e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={formik.handleBlur}
+                      placeholder="Auto (browser viewport)"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="displayHeight" className="text-xs">Height</Label>
+                    <Input
+                      id="displayHeight"
+                      name="displayHeight"
+                      inputMode="numeric"
+                      value={formik.values.displayHeight}
+                      onChange={(e) => formik.setFieldValue('displayHeight', e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={formik.handleBlur}
+                      placeholder="Auto (browser viewport)"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="dpi" className="text-xs">Resolution (DPI)</Label>
+                    <Input
+                      id="dpi"
+                      name="dpi"
+                      inputMode="numeric"
+                      value={formik.values.dpi}
+                      onChange={(e) => formik.setFieldValue('dpi', e.target.value.replace(/[^0-9]/g, ''))}
+                      onBlur={formik.handleBlur}
+                      placeholder="96"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="colorDepth" className="text-xs">Color depth</Label>
+                    <select
+                      id="colorDepth"
+                      name="colorDepth"
+                      value={formik.values.colorDepth}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className="flex h-8 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="32">True color (32-bit)</option>
+                      <option value="24">True color (24-bit)</option>
+                      <option value="16">Low color (16-bit)</option>
+                      <option value="8">256 colors</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="forceLossless" checked={formik.values.forceLossless} onCheckedChange={c => formik.setFieldValue('forceLossless', !!c)} />
+                  <Label htmlFor="forceLossless" className="font-normal text-xs">Force lossless compression</Label>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="resizeMethod" className="text-xs">Resize method</Label>
+                  <select
+                    id="resizeMethod"
+                    name="resizeMethod"
+                    value={formik.values.resizeMethod}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className="flex h-8 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="display-update">Display Update virtual channel (RDP 8.1+)</option>
+                    <option value="reconnect">Reconnect on resize</option>
+                  </select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="readOnly" checked={formik.values.readOnly} onCheckedChange={c => formik.setFieldValue('readOnly', !!c)} />
+                  <Label htmlFor="readOnly" className="font-normal text-xs">Read-only</Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <Label className="flex items-center gap-1.5 mb-2 text-primary font-semibold">
+                Performance
+              </Label>
+              <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                {[
+                  { id: 'enableWallpaper', label: 'Enable wallpaper' },
+                  { id: 'enableTheming', label: 'Enable theming' },
+                  { id: 'enableFontSmoothing', label: 'Enable font smoothing (ClearType)' },
+                  { id: 'enableFullWindowDrag', label: 'Enable full-window drag' },
+                  { id: 'enableDesktopComposition', label: 'Enable desktop composition (Aero)' },
+                  { id: 'enableMenuAnimations', label: 'Enable menu animations' },
+                  { id: 'disableBitmapCaching', label: 'Disable bitmap caching' },
+                  { id: 'disableOffscreenCaching', label: 'Disable off-screen caching' },
+                  { id: 'disableGlyphCaching', label: 'Disable glyph caching' },
+                  { id: 'disableGfx', label: 'Disable Graphics Pipeline Extension' },
+                ].map((opt) => (
+                  <div key={opt.id} className="flex items-center justify-between gap-3 py-0.5">
+                    <Label htmlFor={opt.id} className="font-normal text-xs">{opt.label}</Label>
+                    <Checkbox
+                      id={opt.id}
+                      checked={!!formik.values[opt.id as keyof typeof formik.values]}
+                      onCheckedChange={(c) => formik.setFieldValue(opt.id, !!c)}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 

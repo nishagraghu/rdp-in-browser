@@ -12,6 +12,10 @@ const KEY = Buffer.from(
   config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'),
 );
 
+function setFlag(settings: Record<string, string>, key: string, enabled?: boolean) {
+  if (enabled) settings[key] = 'true';
+}
+
 function makeGuacamoleToken(params: {
   hostname: string;
   port: number;
@@ -20,6 +24,21 @@ function makeGuacamoleToken(params: {
   domain?: string | null;
   width?: number;
   height?: number;
+  dpi?: number | null;
+  colorDepth?: number | null;
+  forceLossless?: boolean;
+  resizeMethod?: string | null;
+  readOnly?: boolean;
+  enableWallpaper?: boolean;
+  enableTheming?: boolean;
+  enableFontSmoothing?: boolean;
+  enableFullWindowDrag?: boolean;
+  enableDesktopComposition?: boolean;
+  enableMenuAnimations?: boolean;
+  disableBitmapCaching?: boolean;
+  disableOffscreenCaching?: boolean;
+  disableGlyphCaching?: boolean;
+  disableGfx?: boolean;
   supportAudioInConsole?: boolean;
   disableAudio?: boolean;
   enableAudioInput?: boolean;
@@ -41,17 +60,27 @@ function makeGuacamoleToken(params: {
     domain: params.domain || '',
     width: String(params.width || 1920),
     height: String(params.height || 1080),
-    dpi: '96',
-    'color-depth': '24',
+    dpi: String(params.dpi && params.dpi > 0 ? params.dpi : 96),
+    'color-depth': String(params.colorDepth || 32),
     security: 'any',
     'ignore-cert': 'true',
-    'enable-wallpaper': 'true',
-    'enable-theming': 'true',
-    'enable-font-smoothing': 'true',
-    'enable-desktop-composition': 'true',
-    'resize-method': 'display-update',
+    'resize-method': params.resizeMethod === 'reconnect' ? 'reconnect' : 'display-update',
   };
 
+  setFlag(settings, 'force-lossless', params.forceLossless);
+  setFlag(settings, 'read-only', params.readOnly);
+  setFlag(settings, 'enable-wallpaper', params.enableWallpaper);
+  setFlag(settings, 'enable-theming', params.enableTheming);
+  setFlag(settings, 'enable-font-smoothing', params.enableFontSmoothing);
+  setFlag(settings, 'enable-full-window-drag', params.enableFullWindowDrag);
+  setFlag(settings, 'enable-desktop-composition', params.enableDesktopComposition);
+  setFlag(settings, 'enable-menu-animations', params.enableMenuAnimations);
+  setFlag(settings, 'disable-bitmap-caching', params.disableBitmapCaching);
+  setFlag(settings, 'disable-offscreen-caching', params.disableOffscreenCaching);
+  setFlag(settings, 'disable-glyph-caching', params.disableGlyphCaching);
+  setFlag(settings, 'disable-gfx', params.disableGfx);
+
+  if (params.supportAudioInConsole) settings['console-audio'] = 'true';
   if (params.disableAudio) settings['disable-audio'] = 'true';
   if (params.enableAudioInput) settings['enable-audio-input'] = 'true';
   if (params.enablePrinting) {
@@ -136,14 +165,42 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       ensureUserDriveDirectory(req.user.username);
     }
 
+    const sessionWidth =
+      vm.displayWidth && vm.displayWidth > 0
+        ? vm.displayWidth
+        : typeof width === 'number'
+          ? width
+          : 1920;
+    const sessionHeight =
+      vm.displayHeight && vm.displayHeight > 0
+        ? vm.displayHeight
+        : typeof height === 'number'
+          ? height
+          : 1080;
+
     const token = makeGuacamoleToken({
       hostname: vm.hostname,
       port: vm.port,
       username: vm.username,
       password: decryptedPassword,
       domain: vm.domain,
-      width: typeof width === 'number' ? width : 1920,
-      height: typeof height === 'number' ? height : 1080,
+      width: sessionWidth,
+      height: sessionHeight,
+      dpi: vm.dpi,
+      colorDepth: vm.colorDepth,
+      forceLossless: vm.forceLossless,
+      resizeMethod: vm.resizeMethod,
+      readOnly: vm.readOnly,
+      enableWallpaper: vm.enableWallpaper,
+      enableTheming: vm.enableTheming,
+      enableFontSmoothing: vm.enableFontSmoothing,
+      enableFullWindowDrag: vm.enableFullWindowDrag,
+      enableDesktopComposition: vm.enableDesktopComposition,
+      enableMenuAnimations: vm.enableMenuAnimations,
+      disableBitmapCaching: vm.disableBitmapCaching,
+      disableOffscreenCaching: vm.disableOffscreenCaching,
+      disableGlyphCaching: vm.disableGlyphCaching,
+      disableGfx: vm.disableGfx,
       supportAudioInConsole: vm.supportAudioInConsole,
       disableAudio: vm.disableAudio,
       enableAudioInput: vm.enableAudioInput,
@@ -189,4 +246,3 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
     res.status(500).json({ success: false, error: 'Failed to initiate Guacamole connection session' });
   }
 }
-
