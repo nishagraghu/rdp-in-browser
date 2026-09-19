@@ -689,21 +689,23 @@ export const RemoteDesktopView: React.FC = () => {
       {/* Invisible top hit zone — reveal toolbar when cursor reaches top in fullscreen */}
       {!isConnecting && isFullscreen && !toolbarVisible && !isPanelCollapsed && (
         <div
-          className="absolute top-0 left-0 right-0 h-4 z-50"
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[min(42%,480px)] min-w-[300px] h-4 z-50"
           onMouseEnter={() => setToolbarRevealed(true)}
           aria-hidden
         />
       )}
 
-      {/* Main Session Toolbar — full width windowed; 50% centered in fullscreen */}
+      {/* Session toolbar — full width windowed; centered 50% bar in fullscreen (Windows RDP style) */}
       {!isConnecting && !isPanelCollapsed && (
         <header
-          className={`h-11 bg-background/95 backdrop-blur-md border px-4 flex items-center justify-between gap-3 z-40 transition-transform duration-200 ease-out ${
+          className={`h-11 flex items-center justify-between gap-2 z-40 transition-transform duration-200 ease-out ${
             isFullscreen
-              ? `absolute top-2 left-1/2 w-1/2 max-w-[960px] -translate-x-1/2 rounded-lg shadow-lg ${
-                  toolbarVisible ? 'translate-y-0' : '-translate-y-[calc(100%+0.5rem)] pointer-events-none'
+              ? `absolute top-0 left-1/2 w-[min(42%,480px)] min-w-[300px] px-3 rounded-b-md border border-t-0 border-border/70 bg-background/95 backdrop-blur-md shadow-lg ${
+                  toolbarVisible
+                    ? '-translate-x-1/2 translate-y-0'
+                    : '-translate-x-1/2 -translate-y-full pointer-events-none'
                 }`
-              : 'relative shrink-0 w-full border-x-0 border-t-0 rounded-none'
+              : 'relative shrink-0 w-full px-4 bg-background/95 backdrop-blur-md border-b'
           }`}
           onMouseEnter={() => {
             if (isFullscreen) setToolbarRevealed(true);
