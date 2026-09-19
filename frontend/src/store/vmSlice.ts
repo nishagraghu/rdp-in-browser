@@ -2,7 +2,8 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import api from '../api/client';
 import { VmDto } from '@rdp/shared';
 
-export const VM_CONNECTION_LOADER_MIN_MS = 5000;
+/** Keep the full-screen connection scheme until RDP is up, then wait this long before revealing the session UI. */
+export const VM_CONNECTION_REVEAL_DELAY_MS = 2000;
 
 interface VmState {
   vms: VmDto[];
