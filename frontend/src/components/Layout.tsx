@@ -10,7 +10,8 @@ import {
   User as UserIcon, 
   LayoutDashboard, 
   SlidersHorizontal,
-  ChevronUp
+  ChevronUp,
+  ImageIcon,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export const Layout: React.FC = () => {
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'VM Management', path: '/admin/vms', icon: Monitor },
     { name: 'Assignments Matrix', path: '/admin/assignments', icon: SlidersHorizontal },
+    { name: 'Customer Logo', path: '/admin/branding', icon: ImageIcon },
     { name: 'User View', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },
   ];

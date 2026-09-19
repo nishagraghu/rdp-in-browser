@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { UploadCloud, File as FileIcon, Folder, RefreshCw, HardDrive, Download } from 'lucide-react';
+import { UploadCloud, File as FileIcon, Folder, RefreshCw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import api from '../api/client';
+import logo from '../logo.png';
 import {
   DriveEntry,
   downloadSharedDriveFile,
@@ -93,8 +94,9 @@ export const FileManager: React.FC = () => {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button id="file-manager-trigger" variant="outline" size="sm" className="gap-2">
-          <HardDrive className="h-4 w-4" />
-          <span className="hidden sm:inline">Shared Drive</span>
+          {/* <HardDrive className="h-4 w-4" /> */}
+          {/* <span className="hidden sm:inline">Shared Drive ff</span> */}
+          <img src={logo} alt="Shared Drive" className="h-8 w-auto object-contain" />
         </Button>
       </DialogTrigger>
 

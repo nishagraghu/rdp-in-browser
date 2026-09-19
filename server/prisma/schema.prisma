@@ -113,3 +113,14 @@ model AuditLog {
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
+
+/// Singleton-style app branding settings (id is always "default").
+model AppSettings {
+  id               String   @id @default("default")
+  logoFileName     String?
+  logoOriginalName String?
+  logoMimeType     String?
+  logoPath         String?
+  updatedAt        DateTime @updatedAt
+  updatedById      String?
+}

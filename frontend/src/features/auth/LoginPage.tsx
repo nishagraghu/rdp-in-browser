@@ -3,11 +3,11 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
 import { loginUser } from '../../store/authSlice';
-import { ShieldCheck, UserCheck, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useCustomerLogo } from '../../hooks/useCustomerLogo';
 
 export const LoginPage: React.FC = () => {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -15,6 +15,7 @@ export const LoginPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { logoSrc } = useCustomerLogo();
 
   const { isLoggingIn, error } = useSelector((state: RootState) => state.auth);
   const successMessage = (location.state as { message?: string })?.message;
@@ -37,7 +38,7 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-muted/20 px-4">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-muted/20 px-4">
       <Card className="relative w-full max-w-sm border-border/60 shadow-sm">
         {isLoggingIn && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/90 backdrop-blur-sm">
@@ -47,9 +48,7 @@ export const LoginPage: React.FC = () => {
         )}
         <CardHeader className="space-y-2 text-center pb-6">
           <div className="flex justify-center mb-2">
-             <div className="h-10 w-10 rounded-md bg-primary/5 border flex items-center justify-center text-primary">
-               <Monitor className="h-5 w-5" />
-             </div>
+            <img src={logoSrc} alt="Customer logo" className="h-16 w-auto max-w-[220px] object-contain" />
           </div>
           <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
           <CardDescription className="text-muted-foreground text-sm">
@@ -117,34 +116,6 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Social / Demo logins */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button 
-              variant="outline" 
-              className="font-normal border-border/60"
-              disabled={isLoggingIn}
-              onClick={() => {
-                setUsernameOrEmail('admin');
-                setPassword('admin123');
-                handleLogin('admin', 'admin123');
-              }}
-            >
-              <ShieldCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Admin
-            </Button>
-            <Button 
-              variant="outline"
-              className="font-normal border-border/60"
-              disabled={isLoggingIn}
-              onClick={() => {
-                setUsernameOrEmail('guest');
-                setPassword('guest123');
-                handleLogin('guest', 'guest123');
-              }}
-            >
-              <UserCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Guest
-            </Button>
-          </div>
-
           <div className="mt-6 text-center text-xs">
             <span className="text-muted-foreground">Don't have an account? </span>
             <Link to="#" className="font-medium hover:underline text-foreground">
@@ -153,7 +124,18 @@ export const LoginPage: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Created and designed by{' '}
+        <a
+          href="https://cloudgoo.in/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          Cloudgoo
+        </a>
+      </p>
     </div>
   );
 };
-

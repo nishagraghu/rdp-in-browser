@@ -20,7 +20,9 @@ import assignmentsRoutes from './modules/assignments/assignments.routes';
 import guacamoleRoutes from './modules/guacamole/guacamole.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import filesRoutes from './modules/files/files.routes';
+import settingsRoutes from './modules/settings/settings.routes';
 import { ensureDrivesRoot } from './utils/userDrive';
+import { ensureBrandingStorageReady } from './modules/settings/settings.controller';
 
 // Ensure data directory exists for SQLite
 const dataDir = path.dirname(path.resolve(config.DATABASE_URL.replace('file:', '')));
@@ -29,12 +31,14 @@ if (!fs.existsSync(dataDir)) {
 }
 
 ensureDrivesRoot();
+ensureBrandingStorageReady();
 
 const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet({
   contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 app.use(cors({
@@ -45,6 +49,14 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json());
 
+// Serve customer branding uploads (public for login page)
+app.use('/uploads', express.static(path.join(process.cwd(), 'data', 'uploads'), {
+  maxAge: '1h',
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  },
+}));
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -54,6 +66,7 @@ app.use('/api', assignmentsRoutes); // For /api/vms/:id/users & /api/users/:user
 app.use('/api', guacamoleRoutes); // For /api/vms/:id/connect
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/files', filesRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({

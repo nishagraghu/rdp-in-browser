@@ -42,7 +42,8 @@ api.interceptors.response.use(
       requestUrl.includes('/auth/me') ||
       requestUrl.includes('/auth/login') ||
       requestUrl.includes('/auth/refresh') ||
-      requestUrl.includes('/auth/setup-status');
+      requestUrl.includes('/auth/setup-status') ||
+      requestUrl.includes('/settings/logo');
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthCheckRoute) {
       originalRequest._retry = true;
