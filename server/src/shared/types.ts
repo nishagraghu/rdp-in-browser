@@ -21,6 +21,7 @@ export interface VmDto {
   protocol: VmProtocol;
   hostname: string;
   port: number;
+  connectionTimeout?: number;
   username: string;
   domain?: string | null;
   isActive: boolean;
@@ -111,5 +112,6 @@ export interface ConnectSessionResponse {
     name: string;
     protocol: VmProtocol;
     hostname: string;
+    connectionTimeout?: number;
   };
 }

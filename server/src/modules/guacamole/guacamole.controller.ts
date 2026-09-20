@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { decryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction } from '../../shared';
+import { UserRole, AuditAction, clampConnectionTimeout } from '../../shared';
 import { config } from '../../config/env';
 import { ensureUserDriveDirectory } from '../../utils/userDrive';
 
@@ -244,6 +244,7 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
           name: vm.name,
           protocol: vm.protocol,
           hostname: vm.hostname,
+          connectionTimeout: clampConnectionTimeout(vm.connectionTimeout),
         },
       },
     });

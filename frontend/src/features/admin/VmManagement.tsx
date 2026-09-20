@@ -4,7 +4,7 @@ import { AppDispatch, RootState } from '../../store';
 import { fetchVms, createVm, updateVm, deleteVm } from '../../store/vmSlice';
 import { fetchUsers } from '../../store/userSlice';
 import api from '../../api/client';
-import { VmDto, VmProtocol, UserDto } from '@rdp/shared';
+import { VmDto, VmProtocol, UserDto, DEFAULT_CONNECTION_TIMEOUT_SEC, MIN_CONNECTION_TIMEOUT_SEC, MAX_CONNECTION_TIMEOUT_SEC, clampConnectionTimeout } from '@rdp/shared';
 import { 
   Search, Plus, Edit2, Trash2, Wifi, Users, Server, Check, 
   AlertCircle, Eye, EyeOff, Globe, Lock, UserCheck
@@ -67,6 +67,7 @@ export const VmManagement: React.FC = () => {
       protocol: VmProtocol.RDP,
       hostname: '',
       port: '3389',
+      connectionTimeout: String(DEFAULT_CONNECTION_TIMEOUT_SEC),
       username: '',
       password: '',
       domain: '',
@@ -104,6 +105,12 @@ export const VmManagement: React.FC = () => {
       name: yup.string().required('VM Display Name is required'),
       hostname: yup.string().required('Hostname/IP is required'),
       port: yup.number().typeError('Must be a number').min(1).max(65535).required('Port is required'),
+      connectionTimeout: yup
+        .number()
+        .typeError('Must be a number')
+        .min(MIN_CONNECTION_TIMEOUT_SEC, `Minimum ${MIN_CONNECTION_TIMEOUT_SEC} seconds`)
+        .max(MAX_CONNECTION_TIMEOUT_SEC, `Maximum ${MAX_CONNECTION_TIMEOUT_SEC} seconds`)
+        .required('Connection timeout is required'),
       username: yup.string().required('Username is required'),
       password: yup.string().test('is-required', 'Password is required', function(value) {
         if (!editingVm && !value) return false;
@@ -126,6 +133,7 @@ export const VmManagement: React.FC = () => {
         protocol: values.protocol,
         hostname: values.hostname.trim(),
         port: parsedPort,
+        connectionTimeout: clampConnectionTimeout(values.connectionTimeout),
         username: values.username.trim(),
         domain: values.domain.trim() || undefined,
         supportAudioInConsole: values.supportAudioInConsole,
@@ -207,6 +215,7 @@ export const VmManagement: React.FC = () => {
       protocol: vm.protocol || VmProtocol.RDP,
       hostname: vm.hostname || '',
       port: String(vm.port || 3389),
+      connectionTimeout: String(clampConnectionTimeout(vm.connectionTimeout)),
       username: vm.username || '',
       password: '',
       domain: vm.domain || '',
@@ -538,7 +547,7 @@ export const VmManagement: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="hostname" className="flex items-center gap-1">
                   <Globe className="w-3.5 h-3.5" />
@@ -572,6 +581,25 @@ export const VmManagement: React.FC = () => {
                 {formik.touched.port && formik.errors.port && (
                   <div className="text-xs text-destructive">{formik.errors.port}</div>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="connectionTimeout">Connect timeout (sec)</Label>
+                <Input
+                  id="connectionTimeout"
+                  name="connectionTimeout"
+                  inputMode="numeric"
+                  value={formik.values.connectionTimeout}
+                  onChange={(e) => formik.setFieldValue('connectionTimeout', e.target.value.replace(/[^0-9]/g, ''))}
+                  onBlur={formik.handleBlur}
+                  placeholder={String(DEFAULT_CONNECTION_TIMEOUT_SEC)}
+                  className={`font-mono text-xs ${formik.touched.connectionTimeout && formik.errors.connectionTimeout ? "border-destructive" : ""}`}
+                />
+                {formik.touched.connectionTimeout && formik.errors.connectionTimeout && (
+                  <div className="text-xs text-destructive">{formik.errors.connectionTimeout}</div>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  Fail the RDP session if it does not connect within this time ({MIN_CONNECTION_TIMEOUT_SEC}–{MAX_CONNECTION_TIMEOUT_SEC}s).
+                </p>
               </div>
             </div>
 

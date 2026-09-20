@@ -30,6 +30,8 @@ model VM {
   protocol          String             @default("RDP")
   hostname          String
   port              Int                @default(3389)
+  // Seconds to wait for the RDP handshake before failing the session
+  connectionTimeout Int                @default(15)
   username          String
   encryptedPassword String
   domain            String?

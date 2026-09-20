@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { encryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, VmProtocol, AuditAction } from '../../shared';
+import { UserRole, VmProtocol, AuditAction, clampConnectionTimeout } from '../../shared';
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -133,6 +133,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      connectionTimeout,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -161,6 +162,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         protocol: vmProtocol,
         hostname: String(hostname).trim(),
         port: vmPort,
+        connectionTimeout: clampConnectionTimeout(connectionTimeout),
         username: String(username).trim(),
         encryptedPassword,
         domain: domain ? String(domain).trim() : null,
@@ -239,6 +241,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      connectionTimeout,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -263,6 +266,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (protocol && Object.values(VmProtocol).includes(protocol as VmProtocol)) updateData.protocol = protocol;
     if (hostname) updateData.hostname = String(hostname).trim();
     if (port) updateData.port = parseInt(String(port), 10);
+    if (connectionTimeout !== undefined) updateData.connectionTimeout = clampConnectionTimeout(connectionTimeout);
     if (username) updateData.username = String(username).trim();
     if (password) updateData.encryptedPassword = encryptVMPassword(String(password));
     if (domain !== undefined) updateData.domain = domain ? String(domain).trim() : null;
@@ -375,7 +379,7 @@ export async function testVmConnection(req: AuthenticatedRequest, res: Response)
     const socket = new net.Socket();
     let isConnected = false;
 
-    socket.setTimeout(4000);
+    socket.setTimeout(clampConnectionTimeout(vm.connectionTimeout) * 1000);
 
     socket.on('connect', () => {
       isConnected = true;

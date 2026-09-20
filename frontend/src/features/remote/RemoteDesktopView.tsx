@@ -43,6 +43,7 @@ import {
 } from '@/lib/rdpKeyboard';
 import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
+import { clampConnectionTimeout } from '@rdp/shared';
 
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
@@ -341,6 +342,7 @@ export const RemoteDesktopView: React.FC = () => {
     let tunnel: Guacamole.WebSocketTunnel | null = null;
     let client: Guacamole.Client | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const initSession = async () => {
       setConnectionStatus('connecting');
@@ -363,6 +365,7 @@ export const RemoteDesktopView: React.FC = () => {
         }
 
         const { token, vm } = res.data.data;
+        const timeoutSec = clampConnectionTimeout(vm.connectionTimeout);
         setVmInfo(vm);
         dispatch(startVmConnection({ id: vm.id, name: vm.name }));
 
@@ -374,6 +377,10 @@ export const RemoteDesktopView: React.FC = () => {
         clientRef.current = client;
 
         client.onerror = (errorState: Guacamole.Status) => {
+          if (connectTimeoutId) {
+            clearTimeout(connectTimeoutId);
+            connectTimeoutId = null;
+          }
           console.error('Guacamole client error:', errorState);
           const message =
             errorState.message ||
@@ -446,6 +453,10 @@ export const RemoteDesktopView: React.FC = () => {
               setConnectionStatus('connecting');
               break;
             case 3:
+              if (connectTimeoutId) {
+                clearTimeout(connectTimeoutId);
+                connectTimeoutId = null;
+              }
               isConnectedRef.current = true;
               setConnectionStatus('connected');
               setTimeout(() => {
@@ -503,6 +514,20 @@ export const RemoteDesktopView: React.FC = () => {
 
         client.connect(`token=${encodeURIComponent(token)}`);
 
+        connectTimeoutId = setTimeout(() => {
+          if (isConnectedRef.current) return;
+          try {
+            client?.disconnect();
+          } catch {
+            /* already closed */
+          }
+          setErrorMessage(
+            `Connection timed out after ${timeoutSec} seconds. The remote host did not complete the RDP handshake.`,
+          );
+          setConnectionStatus('error');
+          dispatch(endVmConnection());
+        }, timeoutSec * 1000);
+
         if (containerRef.current) {
           resizeObserver = new ResizeObserver(() => {
             updateRemoteDisplaySize();
@@ -523,6 +548,7 @@ export const RemoteDesktopView: React.FC = () => {
 
     return () => {
       dispatch(endVmConnection());
+      if (connectTimeoutId) clearTimeout(connectTimeoutId);
       if (sendSizeTimerRef.current) clearTimeout(sendSizeTimerRef.current);
       if (resizeObserver) {
         resizeObserver.disconnect();
