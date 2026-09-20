@@ -57,8 +57,11 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'data', 'uploads'), 
   },
 }));
 
-// API Routes
+// API Routes — public settings (login logo) must be registered before any
+// `/api` catch-all that applies JWT auth (assignments), or unauthenticated
+// GET /api/settings/logo is rejected and the login page never sees uploads.
 app.use('/api/auth', authRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/vms', vmsRoutes);
 app.use('/api/assignments', assignmentsRoutes);
@@ -66,7 +69,6 @@ app.use('/api', assignmentsRoutes); // For /api/vms/:id/users & /api/users/:user
 app.use('/api', guacamoleRoutes); // For /api/vms/:id/connect
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/files', filesRoutes);
-app.use('/api/settings', settingsRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({

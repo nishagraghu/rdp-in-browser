@@ -62,6 +62,9 @@ function makeGuacamoleToken(params: {
     height: String(params.height || 1080),
     dpi: String(params.dpi && params.dpi > 0 ? params.dpi : 96),
     'color-depth': String(params.colorDepth || 32),
+    // Windows shows redirected drives as "{drive-name} on {client-name}".
+    // Default guacd value is "Guacamole RDP" — replace with product brand.
+    'client-name': 'Cloudgoo',
     security: 'any',
     'ignore-cert': 'true',
     'resize-method': params.resizeMethod === 'reconnect' ? 'reconnect' : 'display-update',

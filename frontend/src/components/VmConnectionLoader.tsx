@@ -20,7 +20,7 @@ export const VmConnectionLoader: React.FC<VmConnectionLoaderProps> = ({ vmName }
             Connecting to {vmName || 'Remote Desktop'}
           </h2>
           <p className="text-sm text-muted-foreground max-w-sm">
-            Establishing secure RDP session and negotiating display resolution. This may take a few seconds.
+           connecting to your remote desktop...
           </p>
         </div>
         <div className="h-1 w-48 overflow-hidden rounded-full bg-muted">
