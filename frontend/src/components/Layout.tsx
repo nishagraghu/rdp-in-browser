@@ -59,7 +59,7 @@ export const Layout: React.FC = () => {
               <div className="h-6 w-6 bg-primary/10 text-primary rounded-md flex items-center justify-center">
                 <Monitor className="h-4 w-4" />
               </div>
-              <span className="">GuacRDP</span>
+              {/* <span className="">GuacRDP</span> */}
             </Link>
           </div>
 
@@ -128,7 +128,7 @@ export const Layout: React.FC = () => {
         <header className="flex h-14 items-center justify-between md:justify-end gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
           <Link to="/" className="flex items-center gap-2 font-semibold md:hidden">
             <Monitor className="h-5 w-5 text-primary" />
-            <span className="">GuacRDP</span>
+            {/* <span className="">GuacRDP</span> */}
           </Link>
           <div className="flex items-center gap-4 ml-auto">
             <FileManager />

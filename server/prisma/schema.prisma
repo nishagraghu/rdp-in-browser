@@ -60,6 +60,11 @@ model VM {
   // Channels
   staticChannelNames    String?
 
+  // Clipboard (Guacamole)
+  normalizeClipboard    String  @default("preserve") // preserve | unix | windows
+  disableCopy           Boolean @default(false)
+  disablePaste          Boolean @default(false)
+
   // Display (Guacamole RDP)
   displayWidth          Int?
   displayHeight         Int?

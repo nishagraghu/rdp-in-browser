@@ -42,6 +42,11 @@ export interface VmDto {
   createDrivePath?: boolean;
   staticChannelNames?: string | null;
 
+  // Clipboard (Guacamole)
+  normalizeClipboard?: string;
+  disableCopy?: boolean;
+  disablePaste?: boolean;
+
   // Display (Guacamole RDP)
   displayWidth?: number | null;
   displayHeight?: number | null;

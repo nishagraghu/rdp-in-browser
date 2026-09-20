@@ -83,6 +83,9 @@ export const VmManagement: React.FC = () => {
       drivePath: '',
       createDrivePath: false,
       staticChannelNames: '',
+      normalizeClipboard: 'preserve',
+      disableCopy: false,
+      disablePaste: false,
       displayWidth: '',
       displayHeight: '',
       dpi: '',
@@ -148,6 +151,9 @@ export const VmManagement: React.FC = () => {
         drivePath: values.drivePath.trim() || undefined,
         createDrivePath: values.createDrivePath,
         staticChannelNames: values.staticChannelNames.trim() || undefined,
+        normalizeClipboard: values.normalizeClipboard,
+        disableCopy: values.disableCopy,
+        disablePaste: values.disablePaste,
         displayWidth: parseOptionalInt(values.displayWidth),
         displayHeight: parseOptionalInt(values.displayHeight),
         dpi: parseOptionalInt(values.dpi),
@@ -231,6 +237,12 @@ export const VmManagement: React.FC = () => {
       drivePath: vm.drivePath || '',
       createDrivePath: !!vm.createDrivePath,
       staticChannelNames: vm.staticChannelNames || '',
+      normalizeClipboard:
+        vm.normalizeClipboard === 'unix' || vm.normalizeClipboard === 'windows'
+          ? vm.normalizeClipboard
+          : 'preserve',
+      disableCopy: !!vm.disableCopy,
+      disablePaste: !!vm.disablePaste,
       displayWidth: vm.displayWidth ? String(vm.displayWidth) : '',
       displayHeight: vm.displayHeight ? String(vm.displayHeight) : '',
       dpi: vm.dpi ? String(vm.dpi) : '',
@@ -597,9 +609,9 @@ export const VmManagement: React.FC = () => {
                 {formik.touched.connectionTimeout && formik.errors.connectionTimeout && (
                   <div className="text-xs text-destructive">{formik.errors.connectionTimeout}</div>
                 )}
-                <p className="text-[10px] text-muted-foreground">
+                {/* <p className="text-[10px] text-muted-foreground">
                   Fail the RDP session if it does not connect within this time ({MIN_CONNECTION_TIMEOUT_SEC}–{MAX_CONNECTION_TIMEOUT_SEC}s).
-                </p>
+                </p> */}
               </div>
             </div>
 
@@ -727,9 +739,9 @@ export const VmManagement: React.FC = () => {
                     </select>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="forceLossless" checked={formik.values.forceLossless} onCheckedChange={c => formik.setFieldValue('forceLossless', !!c)} />
+                <div className="flex items-center justify-between gap-3 py-0.5">
                   <Label htmlFor="forceLossless" className="font-normal text-xs">Force lossless compression</Label>
+                  <Checkbox id="forceLossless" checked={formik.values.forceLossless} onCheckedChange={c => formik.setFieldValue('forceLossless', !!c)} />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="resizeMethod" className="text-xs">Resize method</Label>
@@ -745,9 +757,48 @@ export const VmManagement: React.FC = () => {
                     <option value="reconnect">Reconnect on resize</option>
                   </select>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="readOnly" checked={formik.values.readOnly} onCheckedChange={c => formik.setFieldValue('readOnly', !!c)} />
+                <div className="flex items-center justify-between gap-3 py-0.5">
                   <Label htmlFor="readOnly" className="font-normal text-xs">Read-only</Label>
+                  <Checkbox id="readOnly" checked={formik.values.readOnly} onCheckedChange={c => formik.setFieldValue('readOnly', !!c)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <Label className="flex items-center gap-1.5 mb-2 text-primary font-semibold">
+                Clipboard
+              </Label>
+              <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
+                <div className="flex items-center justify-between gap-3 py-0.5">
+                  <Label htmlFor="normalizeClipboard" className="font-normal text-xs shrink-0">Line endings</Label>
+                  <select
+                    id="normalizeClipboard"
+                    name="normalizeClipboard"
+                    value={formik.values.normalizeClipboard}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className="flex h-8 w-full max-w-[220px] items-center rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="preserve">Preserve</option>
+                    <option value="unix">Unix (LF)</option>
+                    <option value="windows">Windows (CRLF)</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-3 py-0.5">
+                  <Label htmlFor="disableCopy" className="font-normal text-xs">Disable copying from remote desktop</Label>
+                  <Checkbox
+                    id="disableCopy"
+                    checked={formik.values.disableCopy}
+                    onCheckedChange={(c) => formik.setFieldValue('disableCopy', !!c)}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 py-0.5">
+                  <Label htmlFor="disablePaste" className="font-normal text-xs">Disable pasting from client</Label>
+                  <Checkbox
+                    id="disablePaste"
+                    checked={formik.values.disablePaste}
+                    onCheckedChange={(c) => formik.setFieldValue('disablePaste', !!c)}
+                  />
                 </div>
               </div>
             </div>
@@ -790,17 +841,17 @@ export const VmManagement: React.FC = () => {
                 {/* Audio */}
                 <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
                   <h4 className="text-sm font-medium mb-3">Audio</h4>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="supportAudioInConsole" checked={formik.values.supportAudioInConsole} onCheckedChange={c => formik.setFieldValue('supportAudioInConsole', !!c)} />
+                  <div className="flex items-center justify-between gap-3 py-0.5">
                     <Label htmlFor="supportAudioInConsole" className="font-normal text-xs">Support audio in console</Label>
+                    <Checkbox id="supportAudioInConsole" checked={formik.values.supportAudioInConsole} onCheckedChange={c => formik.setFieldValue('supportAudioInConsole', !!c)} />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="disableAudio" checked={formik.values.disableAudio} onCheckedChange={c => formik.setFieldValue('disableAudio', !!c)} />
+                  <div className="flex items-center justify-between gap-3 py-0.5">
                     <Label htmlFor="disableAudio" className="font-normal text-xs">Disable audio</Label>
+                    <Checkbox id="disableAudio" checked={formik.values.disableAudio} onCheckedChange={c => formik.setFieldValue('disableAudio', !!c)} />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="enableAudioInput" checked={formik.values.enableAudioInput} onCheckedChange={c => formik.setFieldValue('enableAudioInput', !!c)} />
+                  <div className="flex items-center justify-between gap-3 py-0.5">
                     <Label htmlFor="enableAudioInput" className="font-normal text-xs">Enable audio input (microphone)</Label>
+                    <Checkbox id="enableAudioInput" checked={formik.values.enableAudioInput} onCheckedChange={c => formik.setFieldValue('enableAudioInput', !!c)} />
                   </div>
                 </div>
 
@@ -828,20 +879,20 @@ export const VmManagement: React.FC = () => {
                   Maps to the host folder (<code className="text-[10px]">DRIVES_PATH/&#123;username&#125;</code>).
                   Files copied in the remote session appear on the host; files placed on the host appear in the session.
                 </p>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', !!c)} />
+                <div className="flex items-center justify-between gap-3 py-0.5">
                   <Label htmlFor="enableDrive" className="font-normal text-xs">Enable shared drive</Label>
+                  <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', !!c)} />
                 </div>
                 {formik.values.enableDrive && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6 mt-4">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div className="space-y-1 sm:col-span-2">
                       <Label htmlFor="driveName" className="text-xs">Drive name (in remote session)</Label>
                       <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Shared Drive" className="h-7 text-xs" />
                     </div>
                     <div className="flex flex-col gap-3 col-span-1 sm:col-span-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', !!c)} />
+                      <div className="flex items-center justify-between gap-3 py-0.5">
                         <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable browser upload into shared drive</Label>
+                        <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', !!c)} />
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         Browser downloads are not used — transfer is only via the shared host folder.

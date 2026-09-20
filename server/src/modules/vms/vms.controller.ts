@@ -132,6 +132,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
       name, description, protocol, hostname, port, username, password, domain, assignedUserIds,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
@@ -179,6 +180,12 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         drivePath: drivePath ? String(drivePath).trim() : null,
         createDrivePath: Boolean(createDrivePath),
         staticChannelNames: staticChannelNames ? String(staticChannelNames).trim() : null,
+        normalizeClipboard:
+          normalizeClipboard === 'unix' || normalizeClipboard === 'windows'
+            ? normalizeClipboard
+            : 'preserve',
+        disableCopy: Boolean(disableCopy),
+        disablePaste: Boolean(disablePaste),
         displayWidth: parseOptionalInt(displayWidth),
         displayHeight: parseOptionalInt(displayHeight),
         dpi: parseOptionalInt(dpi),
@@ -240,6 +247,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       name, description, protocol, hostname, port, username, password, domain, isActive,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
@@ -287,6 +295,15 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (createDrivePath !== undefined) updateData.createDrivePath = Boolean(createDrivePath);
     
     if (staticChannelNames !== undefined) updateData.staticChannelNames = staticChannelNames ? String(staticChannelNames).trim() : null;
+
+    if (normalizeClipboard !== undefined) {
+      updateData.normalizeClipboard =
+        normalizeClipboard === 'unix' || normalizeClipboard === 'windows'
+          ? normalizeClipboard
+          : 'preserve';
+    }
+    if (disableCopy !== undefined) updateData.disableCopy = Boolean(disableCopy);
+    if (disablePaste !== undefined) updateData.disablePaste = Boolean(disablePaste);
 
     if (displayWidth !== undefined) updateData.displayWidth = parseOptionalInt(displayWidth);
     if (displayHeight !== undefined) updateData.displayHeight = parseOptionalInt(displayHeight);

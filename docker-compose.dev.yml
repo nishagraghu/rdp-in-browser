@@ -1,0 +1,15 @@
+# Local frontend development override.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   cd frontend && npm run dev
+# Then open http://localhost:5173 (hot reload). Keep Docker for API + guacd.
+
+services:
+  server:
+    ports:
+      - "${PORT:-3001}:3001"
+
+  # Production nginx frontend is unused during Vite HMR development
+  frontend:
+    profiles:
+      - prod-frontend

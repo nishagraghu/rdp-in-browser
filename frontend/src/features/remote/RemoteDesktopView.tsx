@@ -44,6 +44,7 @@ import {
 import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
 import { clampConnectionTimeout } from '@rdp/shared';
+import { attachRdpClipboard, type RdpClipboardBridge } from '@/lib/rdpClipboard';
 
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
@@ -343,6 +344,7 @@ export const RemoteDesktopView: React.FC = () => {
     let client: Guacamole.Client | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let clipboardBridge: RdpClipboardBridge | null = null;
 
     const initSession = async () => {
       setConnectionStatus('connecting');
@@ -459,6 +461,7 @@ export const RemoteDesktopView: React.FC = () => {
               }
               isConnectedRef.current = true;
               setConnectionStatus('connected');
+              void clipboardBridge?.syncFromLocal();
               setTimeout(() => {
                 updateRemoteDisplaySize();
                 applyScale('fit', 100);
@@ -512,6 +515,8 @@ export const RemoteDesktopView: React.FC = () => {
           };
         }
 
+        clipboardBridge = attachRdpClipboard(client, displayRef.current);
+
         client.connect(`token=${encodeURIComponent(token)}`);
 
         connectTimeoutId = setTimeout(() => {
@@ -548,6 +553,8 @@ export const RemoteDesktopView: React.FC = () => {
 
     return () => {
       dispatch(endVmConnection());
+      clipboardBridge?.detach();
+      clipboardBridge = null;
       if (connectTimeoutId) clearTimeout(connectTimeoutId);
       if (sendSizeTimerRef.current) clearTimeout(sendSizeTimerRef.current);
       if (resizeObserver) {
@@ -1090,10 +1097,10 @@ export const RemoteDesktopView: React.FC = () => {
               <p className="text-sm text-destructive max-w-md mx-auto mt-2 font-mono text-xs">
                 {errorMessage || 'Unable to connect to target RDP host via Guacamole.'}
               </p>
-              <p className="text-xs text-muted-foreground max-w-md mx-auto mt-3">
+              {/* <p className="text-xs text-muted-foreground max-w-md mx-auto mt-3">
                 Verify the VM username and password in Admin settings. If target account is locked,
                 unlock it on the remote Windows server and try again.
-              </p>
+              </p> */}
             </div>
             <div className="flex space-x-3 pt-2">
               <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">

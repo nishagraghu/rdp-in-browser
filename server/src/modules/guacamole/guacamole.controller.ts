@@ -51,6 +51,9 @@ function makeGuacamoleToken(params: {
   drivePath?: string | null;
   createDrivePath?: boolean;
   staticChannelNames?: string | null;
+  normalizeClipboard?: string | null;
+  disableCopy?: boolean;
+  disablePaste?: boolean;
 }): string {
   const settings: Record<string, string> = {
     hostname: params.hostname,
@@ -104,6 +107,14 @@ function makeGuacamoleToken(params: {
   if (params.staticChannelNames) {
     settings['static-channels'] = params.staticChannelNames;
   }
+
+  if (params.normalizeClipboard === 'unix' || params.normalizeClipboard === 'windows') {
+    settings['normalize-clipboard'] = params.normalizeClipboard;
+  } else if (params.normalizeClipboard === 'preserve') {
+    settings['normalize-clipboard'] = 'preserve';
+  }
+  setFlag(settings, 'disable-copy', params.disableCopy);
+  setFlag(settings, 'disable-paste', params.disablePaste);
 
   const payload = {
     connection: {
@@ -220,6 +231,9 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       drivePath: vm.enableDrive ? `/drives/${req.user?.username}` : undefined,
       createDrivePath: vm.enableDrive ? true : undefined,
       staticChannelNames: vm.staticChannelNames,
+      normalizeClipboard: vm.normalizeClipboard,
+      disableCopy: vm.disableCopy,
+      disablePaste: vm.disablePaste,
     });
 
     await createAuditLog({
