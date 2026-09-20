@@ -30,7 +30,8 @@ import {
   ChevronDown,
   ChevronUp,
   Upload,
-  Download
+  Download,
+  Printer
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
@@ -61,6 +62,8 @@ export const RemoteDesktopView: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
+  const [printJob, setPrintJob] = useState<{ url: string; filename: string } | null>(null);
+  const printFrameRef = useRef<HTMLIFrameElement>(null);
   const [toolbarRevealed, setToolbarRevealed] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
 
@@ -222,7 +225,7 @@ export const RemoteDesktopView: React.FC = () => {
     setToolbarRevealed(false);
 
     const onMove = (e: MouseEvent) => {
-      if (downloadDialogOpen || disconnectDialogOpen) {
+      if (downloadDialogOpen || disconnectDialogOpen || printJob) {
         setToolbarRevealed(true);
         return;
       }
@@ -235,7 +238,7 @@ export const RemoteDesktopView: React.FC = () => {
 
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [isFullscreen, downloadDialogOpen, disconnectDialogOpen]);
+  }, [isFullscreen, downloadDialogOpen, disconnectDialogOpen, printJob]);
 
   // Keyboard shortcut & Escape long press listener
   useEffect(() => {
@@ -380,14 +383,59 @@ export const RemoteDesktopView: React.FC = () => {
           dispatch(endVmConnection());
         };
 
-        client.onfile = (stream, _mimetype, filename) => {
-          stream.sendAck(
-            'Use the shared drive — files appear on the host folder',
-            Guacamole.Status.Code.UNSUPPORTED,
-          );
-          toast.info(
-            `"${filename}" stays on the shared drive — open Shared Drive or the host folder to view it.`,
-          );
+        client.onfile = (stream, mimetype, filename) => {
+          const name = filename || 'print.pdf';
+          const mime = mimetype || 'application/octet-stream';
+          const isPrintJob =
+            mime === 'application/pdf' ||
+            mime.includes('pdf') ||
+            mime.includes('postscript') ||
+            name.toLowerCase().endsWith('.pdf') ||
+            name.toLowerCase().endsWith('.ps');
+
+          // Shared-drive model: reject non-print Guacamole file downloads.
+          if (!isPrintJob) {
+            stream.sendAck(
+              'Use the shared drive — files appear on the host folder',
+              Guacamole.Status.Code.UNSUPPORTED,
+            );
+            toast.info(
+              `"${name}" stays on the shared drive — open Shared Drive or the host folder to view it.`,
+            );
+            return;
+          }
+
+          // Install reader first, then ACK — avoids missing early blobs.
+          const reader = new Guacamole.BlobReader(stream, mime);
+          stream.sendAck('OK', Guacamole.Status.Code.SUCCESS);
+          toast.info(`Receiving print job: ${name}…`);
+
+          reader.onend = async () => {
+            const raw = reader.getBlob();
+            if (!raw || raw.size === 0) {
+              toast.error('Print job arrived empty. Try printing again from the remote session.');
+              return;
+            }
+
+            const header = new TextDecoder('latin1').decode(await raw.slice(0, 256).arrayBuffer());
+            const looksLikePdf = header.startsWith('%PDF');
+            if (!looksLikePdf) {
+              toast.error(
+                'The remote printer sent an empty or invalid document. Reconnect and print again to Cloudgoo PDF.',
+              );
+              return;
+            }
+
+            const pdfBlob = raw.type === 'application/pdf' ? raw : new Blob([raw], { type: 'application/pdf' });
+            const url = URL.createObjectURL(pdfBlob);
+            const safeName = name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf`;
+
+            setPrintJob((prev) => {
+              if (prev?.url) URL.revokeObjectURL(prev.url);
+              return { url, filename: safeName };
+            });
+            toast.success('Print job ready — preview opened. Click Print to use your local printer.');
+          };
         };
 
         client.onstatechange = (state) => {
@@ -484,6 +532,10 @@ export const RemoteDesktopView: React.FC = () => {
           clientRef.current.disconnect();
         } catch {}
       }
+      setPrintJob((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return null;
+      });
     };
   }, [vmId, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
 
@@ -609,7 +661,40 @@ export const RemoteDesktopView: React.FC = () => {
   const isConnecting = !!connectingVm;
   // Fullscreen + minimized: only the compact floating pill (Windows RDP style)
   const useCompactPill = isFullscreen || isPanelCollapsed;
-  const pillVisible = !isFullscreen || toolbarRevealed || downloadDialogOpen || disconnectDialogOpen;
+  const pillVisible = !isFullscreen || toolbarRevealed || downloadDialogOpen || disconnectDialogOpen || !!printJob;
+
+  const closePrintJob = () => {
+    setPrintJob((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  };
+
+  const handlePrintJobDownload = () => {
+    if (!printJob) return;
+    const anchor = document.createElement('a');
+    anchor.href = printJob.url;
+    anchor.download = printJob.filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  const handlePrintJobPrint = () => {
+    const frame = printFrameRef.current;
+    if (!frame?.contentWindow) {
+      // Fallback: open PDF in a new tab for the user to print
+      if (printJob?.url) window.open(printJob.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch {
+      if (printJob?.url) window.open(printJob.url, '_blank', 'noopener,noreferrer');
+      toast.info('Opened PDF in a new tab — use Ctrl+P / Cmd+P to print.');
+    }
+  };
 
   return (
     <div ref={rootRef} className="fixed inset-0 w-full h-full min-h-0 flex flex-col bg-background text-foreground overflow-hidden select-none">
@@ -620,6 +705,47 @@ export const RemoteDesktopView: React.FC = () => {
         onOpenChange={setDownloadDialogOpen}
         container={rootRef.current}
       />
+
+      <Dialog
+        open={!!printJob}
+        onOpenChange={(open) => {
+          if (!open) closePrintJob();
+        }}
+      >
+        <DialogContent container={rootRef.current} className="sm:max-w-3xl h-[85vh] flex flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-4 w-4" />
+              Print preview
+            </DialogTitle>
+            <DialogDescription>
+              {printJob?.filename
+                ? `"${printJob.filename}" from the remote session. Click Print to send it to a printer on this computer.`
+                : 'Print job from the remote session.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 rounded-md border bg-muted/30 overflow-hidden">
+            {printJob?.url ? (
+              <iframe
+                ref={printFrameRef}
+                title={printJob.filename}
+                src={printJob.url}
+                className="h-full w-full border-0 bg-white"
+              />
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="secondary" onClick={handlePrintJobDownload}>
+              <Download className="h-4 w-4 mr-1.5" />
+              Download PDF
+            </Button>
+            <Button type="button" onClick={handlePrintJobPrint}>
+              <Printer className="h-4 w-4 mr-1.5" />
+              Print
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
         <DialogContent container={rootRef.current} className="sm:max-w-md">
@@ -673,7 +799,7 @@ export const RemoteDesktopView: React.FC = () => {
             if (isFullscreen) setToolbarRevealed(true);
           }}
           onMouseLeave={() => {
-            if (isFullscreen && !downloadDialogOpen && !disconnectDialogOpen) setToolbarRevealed(false);
+            if (isFullscreen && !downloadDialogOpen && !disconnectDialogOpen && !printJob) setToolbarRevealed(false);
           }}
         >
           <Button

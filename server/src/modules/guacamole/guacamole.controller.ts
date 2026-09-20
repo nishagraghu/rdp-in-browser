@@ -88,7 +88,8 @@ function makeGuacamoleToken(params: {
   if (params.enableAudioInput) settings['enable-audio-input'] = 'true';
   if (params.enablePrinting) {
     settings['enable-printing'] = 'true';
-    if (params.printerName) settings['printer-name'] = params.printerName;
+    // Appears in the remote session's printer list; print jobs arrive as PDF in the browser.
+    settings['printer-name'] = params.printerName?.trim() || 'Cloudgoo PDF';
   }
   if (params.enableDrive) {
     settings['enable-drive'] = 'true';
@@ -207,8 +208,10 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       supportAudioInConsole: vm.supportAudioInConsole,
       disableAudio: vm.disableAudio,
       enableAudioInput: vm.enableAudioInput,
-      enablePrinting: vm.enablePrinting,
-      printerName: vm.printerName,
+      // Remote Print → PDF → end-user's browser print dialog → their local printers.
+      // Always on so Print in the RDP session reaches the user machine.
+      enablePrinting: true,
+      printerName: vm.printerName?.trim() || 'Cloudgoo PDF',
       enableDrive: vm.enableDrive,
       driveName: vm.driveName || 'Shared Drive',
       // Browser download channel is unused; host shared folder is the transfer path.

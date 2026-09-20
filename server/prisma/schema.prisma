@@ -43,8 +43,8 @@ model VM {
   disableAudio          Boolean @default(false)
   enableAudioInput      Boolean @default(false)
 
-  // Device Redirection (Printing)
-  enablePrinting        Boolean @default(false)
+  // Device Redirection (Printing) — print jobs are PDF'd and sent to the browser user's local printers
+  enablePrinting        Boolean @default(true)
   printerName           String?
 
   // Device Redirection (Drive)

@@ -265,7 +265,10 @@ export default function ConnectForm({ onConnect }: Props) {
                       {formik.values.enablePrinting && (
                         <div className="pl-6">
                           <Label htmlFor="printerName" className="text-xs">Redirected printer name</Label>
-                          <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
+                          <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Cloudgoo PDF" className="h-7 text-xs mt-1" />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Print jobs download as PDF and open the print dialog on this computer.
+                          </p>
                         </div>
                       )}
                     </div>

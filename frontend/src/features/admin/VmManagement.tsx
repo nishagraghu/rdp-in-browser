@@ -73,7 +73,7 @@ export const VmManagement: React.FC = () => {
       supportAudioInConsole: false,
       disableAudio: false,
       enableAudioInput: false,
-      enablePrinting: false,
+      enablePrinting: true,
       printerName: '',
       enableDrive: false,
       driveName: '',
@@ -776,19 +776,20 @@ export const VmManagement: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Printing */}
+                {/* Printing — always redirected to the end-user's local printers */}
                 <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
                   <h4 className="text-sm font-medium mb-3">Printing</h4>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="enablePrinting" checked={formik.values.enablePrinting} onCheckedChange={c => formik.setFieldValue('enablePrinting', !!c)} />
-                    <Label htmlFor="enablePrinting" className="font-normal text-xs">Enable printing</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Print inside the remote desktop is always redirected to the end user&apos;s
+                    computer. The system print dialog opens so they can choose a local printer.
+                  </p>
+                  <div className="space-y-1">
+                    <Label htmlFor="printerName" className="text-xs">Printer name (shown inside remote Windows)</Label>
+                    <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Cloudgoo PDF" className="h-7 text-xs" />
+                    <p className="text-[10px] text-muted-foreground">
+                      User prints to this printer in the remote session → PDF arrives on their PC → they select their real printer.
+                    </p>
                   </div>
-                  {formik.values.enablePrinting && (
-                    <div className="pl-6 mt-3 space-y-1">
-                      <Label htmlFor="printerName" className="text-xs">Redirected printer name</Label>
-                      <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs" />
-                    </div>
-                  )}
                 </div>
               </div>
 
