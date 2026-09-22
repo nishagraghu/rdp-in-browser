@@ -132,10 +132,14 @@ export async function login(req: Request, res: Response): Promise<void> {
         userId: user.id,
         userName: user.username,
         action: AuditAction.AUTH_FAILURE,
-        details: 'Login attempt for deactivated user account',
+        details: 'Login attempt for disabled user account',
         ipAddress: req.ip,
       });
-      res.status(403).json({ success: false, error: 'Account is deactivated. Please contact an administrator.' });
+      res.status(403).json({
+        success: false,
+        error: 'Account is disabled. Please contact an administrator.',
+        code: 'ACCOUNT_DISABLED',
+      });
       return;
     }
 
@@ -257,7 +261,14 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
     });
 
     if (!user || !user.isActive) {
-      res.status(401).json({ success: false, error: 'User account not found or inactive' });
+      if (user && !user.isActive) {
+        await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+      }
+      res.status(401).json({
+        success: false,
+        error: 'Account is disabled. Please contact an administrator.',
+        code: 'ACCOUNT_DISABLED',
+      });
       return;
     }
 
@@ -302,7 +313,13 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     });
 
     if (!user || !user.isActive) {
-      res.status(401).json({ success: false, error: 'User account inactive or deleted' });
+      await prisma.refreshToken.deleteMany({ where: { userId: payload.userId } });
+      res.clearCookie('refreshToken');
+      res.status(401).json({
+        success: false,
+        error: 'Account is disabled. Please contact an administrator.',
+        code: 'ACCOUNT_DISABLED',
+      });
       return;
     }
 

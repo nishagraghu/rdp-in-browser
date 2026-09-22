@@ -36,6 +36,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url || '';
+    const errorCode = error.response?.data?.code;
+
+    // Disabled accounts: clear session and force login immediately
+    if (error.response?.status === 401 && errorCode === 'ACCOUNT_DISABLED') {
+      setAccessToken(null);
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
 
     // Bypass refresh logic for authentication check/login routes
     const isAuthCheckRoute =
@@ -62,6 +72,7 @@ api.interceptors.response.use(
         }
       }
     }
+
     return Promise.reject(error);
   }
 );

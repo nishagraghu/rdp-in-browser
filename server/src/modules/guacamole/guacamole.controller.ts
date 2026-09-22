@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { decryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction, clampConnectionTimeout } from '../../shared';
+import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason } from '../../shared';
 import { config } from '../../config/env';
 import { ensureUserDriveDirectory } from '../../utils/userDrive';
 
@@ -155,6 +155,24 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
 
     if (!vm.isActive) {
       res.status(403).json({ success: false, error: 'Target VM is currently disabled/inactive' });
+      return;
+    }
+
+    const accessBlock = getVmAccessBlockReason({
+      allowAccessAfter: vm.allowAccessAfter,
+      doNotAllowAccessAfter: vm.doNotAllowAccessAfter,
+      enableAccountAfter: vm.enableAccountAfter,
+      disableAccountAfter: vm.disableAccountAfter,
+    });
+    if (accessBlock) {
+      await createAuditLog({
+        userId,
+        userName: req.user?.username,
+        action: AuditAction.AUTH_FAILURE,
+        details: `Access schedule blocked connection to VM ${vm.name} (${vm.id}): ${accessBlock}`,
+        ipAddress: req.ip,
+      });
+      res.status(403).json({ success: false, error: accessBlock });
       return;
     }
 

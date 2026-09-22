@@ -16,6 +16,7 @@ import { Toaster } from 'sonner';
 import { VmManagement } from './features/admin/VmManagement';
 import { AssignmentsPage } from './features/admin/AssignmentsPage';
 import { BrandingSettings } from './features/admin/BrandingSettings';
+import { AuditReportPage } from './features/admin/AuditReportPage';
 import { RemoteDesktopView } from './features/remote/RemoteDesktopView';
 import { VmConnectionLoader } from './components/VmConnectionLoader';
 import { UserRole } from '@rdp/shared';
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/admin/users" element={<UserManagement />} />
               <Route path="/admin/vms" element={<VmManagement />} />
               <Route path="/admin/assignments" element={<AssignmentsPage />} />
+              <Route path="/admin/audit" element={<AuditReportPage />} />
               <Route path="/admin/branding" element={<BrandingSettings />} />
             </Route>
           </Route>

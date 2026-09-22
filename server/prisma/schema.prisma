@@ -40,6 +40,13 @@ model VM {
   updatedAt         DateTime           @updatedAt
   assignments       VMUserAssignment[]
 
+  // Access schedule (Guacamole-style restrictions)
+  // Times stored as "HH:mm" (24h); dates as "YYYY-MM-DD". Empty/null = no restriction.
+  allowAccessAfter      String?
+  doNotAllowAccessAfter String?
+  enableAccountAfter    String?
+  disableAccountAfter   String?
+
   // Device Redirection (Audio)
   supportAudioInConsole Boolean @default(false)
   disableAudio          Boolean @default(false)

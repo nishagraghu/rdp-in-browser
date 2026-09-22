@@ -50,7 +50,8 @@ export const fetchCurrentUser = createAsyncThunk(
       const res = await api.get('/auth/me');
       return res.data.data;
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
+      const error = err as { response?: { data?: { error?: string; code?: string } } };
+      setAccessToken(null);
       return rejectWithValue(error.response?.data?.error || 'Unauthenticated');
     }
   }

@@ -106,6 +106,14 @@ export async function getUserById(req: AuthenticatedRequest, res: Response): Pro
 
 export async function createUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    if (!req.user || req.user.role !== UserRole.ADMIN) {
+      res.status(403).json({
+        success: false,
+        error: 'Only administrators can create new user accounts. Self-signup is not allowed.',
+      });
+      return;
+    }
+
     const { name, email, username, password, role } = req.body;
 
     if (!name || !email || !username || !password) {
@@ -206,6 +214,11 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
+    if (typeof isActive === 'boolean' && isActive === false && req.user?.userId === id) {
+      res.status(400).json({ success: false, error: 'You cannot disable your own account' });
+      return;
+    }
+
     const updateData: Record<string, unknown> = {};
 
     if (name) updateData.name = String(name).trim();
@@ -245,11 +258,23 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
       },
     });
 
+    // Force-logout: revoke all sessions when the account is disabled
+    if (typeof isActive === 'boolean' && isActive === false) {
+      await prisma.refreshToken.deleteMany({ where: { userId: id } });
+    }
+
+    const statusNote =
+      typeof isActive === 'boolean'
+        ? isActive
+          ? ' (account enabled)'
+          : ' (account disabled — sessions revoked)'
+        : '';
+
     await createAuditLog({
       userId: req.user?.userId,
       userName: req.user?.username,
       action: AuditAction.USER_UPDATE,
-      details: `Updated user profile for ${updated.username}`,
+      details: `Updated user profile for ${updated.username}${statusNote}`,
       ipAddress: req.ip,
     });
 

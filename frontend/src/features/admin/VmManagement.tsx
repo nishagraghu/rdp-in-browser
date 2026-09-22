@@ -71,6 +71,10 @@ export const VmManagement: React.FC = () => {
       username: '',
       password: '',
       domain: '',
+      allowAccessAfter: '',
+      doNotAllowAccessAfter: '',
+      enableAccountAfter: '',
+      disableAccountAfter: '',
       supportAudioInConsole: false,
       disableAudio: false,
       enableAudioInput: false,
@@ -139,6 +143,10 @@ export const VmManagement: React.FC = () => {
         connectionTimeout: clampConnectionTimeout(values.connectionTimeout),
         username: values.username.trim(),
         domain: values.domain.trim() || undefined,
+        allowAccessAfter: values.allowAccessAfter.trim() || null,
+        doNotAllowAccessAfter: values.doNotAllowAccessAfter.trim() || null,
+        enableAccountAfter: values.enableAccountAfter.trim() || null,
+        disableAccountAfter: values.disableAccountAfter.trim() || null,
         supportAudioInConsole: values.supportAudioInConsole,
         disableAudio: values.disableAudio,
         enableAudioInput: values.enableAudioInput,
@@ -225,6 +233,10 @@ export const VmManagement: React.FC = () => {
       username: vm.username || '',
       password: '',
       domain: vm.domain || '',
+      allowAccessAfter: vm.allowAccessAfter || '',
+      doNotAllowAccessAfter: vm.doNotAllowAccessAfter || '',
+      enableAccountAfter: vm.enableAccountAfter || '',
+      disableAccountAfter: vm.disableAccountAfter || '',
       supportAudioInConsole: !!vm.supportAudioInConsole,
       disableAudio: !!vm.disableAudio,
       enableAudioInput: !!vm.enableAudioInput,
@@ -672,6 +684,75 @@ export const VmManagement: React.FC = () => {
                   onBlur={formik.handleBlur}
                   placeholder="WORKGROUP"
                 />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <Label className="flex items-center gap-1.5 mb-2 text-primary font-semibold">
+                Access Restrictions
+              </Label>
+              <div className="space-y-3 bg-muted/20 p-3 rounded-md border">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <Label htmlFor="allowAccessAfter" className="font-normal text-sm sm:w-48 shrink-0">
+                      Allow access after
+                    </Label>
+                    <Input
+                      id="allowAccessAfter"
+                      name="allowAccessAfter"
+                      type="time"
+                      value={formik.values.allowAccessAfter}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className="flex-1"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <Label htmlFor="doNotAllowAccessAfter" className="font-normal text-sm sm:w-48 shrink-0">
+                      Do not allow access after
+                    </Label>
+                    <Input
+                      id="doNotAllowAccessAfter"
+                      name="doNotAllowAccessAfter"
+                      type="time"
+                      value={formik.values.doNotAllowAccessAfter}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className="flex-1"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <Label htmlFor="enableAccountAfter" className="font-normal text-sm sm:w-48 shrink-0">
+                      Enable account after
+                    </Label>
+                    <Input
+                      id="enableAccountAfter"
+                      name="enableAccountAfter"
+                      type="date"
+                      value={formik.values.enableAccountAfter}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className="flex-1"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <Label htmlFor="disableAccountAfter" className="font-normal text-sm sm:w-48 shrink-0">
+                      Disable account after
+                    </Label>
+                    <Input
+                      id="disableAccountAfter"
+                      name="disableAccountAfter"
+                      type="date"
+                      value={formik.values.disableAccountAfter}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Leave blank for no restriction. Daily time window and calendar dates control when users can connect to this VM.
+                </p>
               </div>
             </div>
 

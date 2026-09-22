@@ -27,6 +27,12 @@ export interface VmDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+
+  // Access schedule (times "HH:mm", dates "YYYY-MM-DD")
+  allowAccessAfter?: string | null;
+  doNotAllowAccessAfter?: string | null;
+  enableAccountAfter?: string | null;
+  disableAccountAfter?: string | null;
   
   // Device Redirection
   supportAudioInConsole?: boolean;

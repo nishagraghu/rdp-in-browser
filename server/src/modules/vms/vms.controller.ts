@@ -4,7 +4,14 @@ import { prisma } from '../../db/prisma';
 import { encryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, VmProtocol, AuditAction, clampConnectionTimeout } from '../../shared';
+import {
+  UserRole,
+  VmProtocol,
+  AuditAction,
+  clampConnectionTimeout,
+  normalizeAccessTime,
+  normalizeAccessDate,
+} from '../../shared';
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -135,6 +142,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -168,6 +176,10 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         encryptedPassword,
         domain: domain ? String(domain).trim() : null,
         isActive: true,
+        allowAccessAfter: normalizeAccessTime(allowAccessAfter),
+        doNotAllowAccessAfter: normalizeAccessTime(doNotAllowAccessAfter),
+        enableAccountAfter: normalizeAccessDate(enableAccountAfter),
+        disableAccountAfter: normalizeAccessDate(disableAccountAfter),
         supportAudioInConsole: Boolean(supportAudioInConsole),
         disableAudio: Boolean(disableAudio),
         enableAudioInput: Boolean(enableAudioInput),
@@ -250,6 +262,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -279,6 +292,11 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (password) updateData.encryptedPassword = encryptVMPassword(String(password));
     if (domain !== undefined) updateData.domain = domain ? String(domain).trim() : null;
     if (typeof isActive === 'boolean') updateData.isActive = isActive;
+
+    if (allowAccessAfter !== undefined) updateData.allowAccessAfter = normalizeAccessTime(allowAccessAfter);
+    if (doNotAllowAccessAfter !== undefined) updateData.doNotAllowAccessAfter = normalizeAccessTime(doNotAllowAccessAfter);
+    if (enableAccountAfter !== undefined) updateData.enableAccountAfter = normalizeAccessDate(enableAccountAfter);
+    if (disableAccountAfter !== undefined) updateData.disableAccountAfter = normalizeAccessDate(disableAccountAfter);
     
     if (supportAudioInConsole !== undefined) updateData.supportAudioInConsole = Boolean(supportAudioInConsole);
     if (disableAudio !== undefined) updateData.disableAudio = Boolean(disableAudio);

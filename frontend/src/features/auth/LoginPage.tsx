@@ -209,6 +209,11 @@ export const LoginPage: React.FC = () => {
                 )}
               </Button>
             </form>
+
+            {/* <p className="mt-5 text-center text-xs leading-relaxed text-slate-400">
+              New accounts can only be created by an administrator.
+              Self-signup is not available.
+            </p> */}
           </div>
         </div>
 
