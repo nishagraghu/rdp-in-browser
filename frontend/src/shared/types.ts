@@ -46,6 +46,7 @@ export interface VmDto {
   disableFileUpload?: boolean;
   drivePath?: string | null;
   createDrivePath?: boolean;
+  commonDrive?: boolean;
   staticChannelNames?: string | null;
 
   // Clipboard (Guacamole)

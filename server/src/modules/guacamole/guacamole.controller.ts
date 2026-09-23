@@ -6,7 +6,7 @@ import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason } from '../../shared';
 import { config } from '../../config/env';
-import { ensureUserDriveDirectory } from '../../utils/userDrive';
+import { ensureUserDriveDirectory, guacDrivePath, normalizeCommonDriveRelative } from '../../utils/userDrive';
 
 const KEY = Buffer.from(
   config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'),
@@ -194,8 +194,25 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
 
     const decryptedPassword = decryptVMPassword(vm.encryptedPassword);
 
-    if (vm.enableDrive && req.user?.username) {
+    let sessionDrivePath: string | undefined;
+    let sessionCreateDrivePath: boolean | undefined;
+
+    if (vm.enableDrive && vm.commonDrive) {
+      const relative = normalizeCommonDriveRelative(vm.drivePath || '');
+      if (!relative) {
+        res.status(400).json({
+          success: false,
+          error: 'Common folder path is missing or invalid. Set a folder name under the shared drives directory.',
+        });
+        return;
+      }
+      // Use the folder the admin named. Do not create a per-user folder.
+      sessionDrivePath = guacDrivePath(relative);
+      sessionCreateDrivePath = false;
+    } else if (vm.enableDrive && req.user?.username) {
       ensureUserDriveDirectory(req.user.username);
+      sessionDrivePath = guacDrivePath(req.user.username);
+      sessionCreateDrivePath = true;
     }
 
     const sessionWidth =
@@ -246,8 +263,8 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       // Browser download channel is unused; host shared folder is the transfer path.
       disableFileDownload: true,
       disableFileUpload: vm.disableFileUpload,
-      drivePath: vm.enableDrive ? `/drives/${req.user?.username}` : undefined,
-      createDrivePath: vm.enableDrive ? true : undefined,
+      drivePath: sessionDrivePath,
+      createDrivePath: sessionCreateDrivePath,
       staticChannelNames: vm.staticChannelNames,
       normalizeClipboard: vm.normalizeClipboard,
       disableCopy: vm.disableCopy,

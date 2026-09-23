@@ -63,6 +63,8 @@ model VM {
   disableFileUpload     Boolean @default(false)
   drivePath             String?
   createDrivePath       Boolean @default(false)
+  // One existing host folder shared by every user. The app does not create it.
+  commonDrive           Boolean @default(false)
   
   // Channels
   staticChannelNames    String?

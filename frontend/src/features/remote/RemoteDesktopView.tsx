@@ -340,6 +340,7 @@ export const RemoteDesktopView: React.FC = () => {
   useEffect(() => {
     if (!vmId) return;
 
+    let cancelled = false;
     let tunnel: Guacamole.WebSocketTunnel | null = null;
     let client: Guacamole.Client | null = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -361,6 +362,8 @@ export const RemoteDesktopView: React.FC = () => {
           width: initialWidth, 
           height: initialHeight 
         });
+
+        if (cancelled) return;
 
         if (!res.data.success) {
           throw new Error(res.data.error || 'Failed to initiate remote session');
@@ -488,12 +491,26 @@ export const RemoteDesktopView: React.FC = () => {
           displayRef.current.appendChild(displayElement);
         }
 
+        // Fit-to-window scaling (resolution ≠ viewport, especially right after
+        // reload) draws Guacamole's software cursor in remote pixels, offset
+        // from the browser pointer. Use one CSS cursor and scale mouse coords.
+        display.showCursor(false);
+        displayElement.style.cursor = 'none';
+
         const mouse = new Guacamole.Mouse(displayElement);
-        const handleMouse = (mouseState: unknown) => {
-          if (clientRef.current) clientRef.current.sendMouseState(mouseState as never);
+        mouse.onEach(['mousedown', 'mousemove', 'mouseup'], (event) => {
+          const state = (event as Guacamole.Mouse.Event).state;
+          clientRef.current?.sendMouseState(state, true);
+        });
+
+        display.oncursor = (canvas, x, y) => {
+          if (mouse.setCursor(canvas, x, y)) {
+            display.showCursor(false);
+            return;
+          }
+          display.showCursor(true);
+          displayElement.style.cursor = 'none';
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mouse as any).onmousedown = (mouse as any).onmouseup = (mouse as any).onmousemove = handleMouse;
 
         const keyboardTarget = displayRef.current;
         let keyboard: Guacamole.Keyboard | null = null;
@@ -552,6 +569,7 @@ export const RemoteDesktopView: React.FC = () => {
     initSession();
 
     return () => {
+      cancelled = true;
       dispatch(endVmConnection());
       clipboardBridge?.detach();
       clipboardBridge = null;
@@ -564,6 +582,10 @@ export const RemoteDesktopView: React.FC = () => {
         try {
           clientRef.current.disconnect();
         } catch {}
+        clientRef.current = null;
+      }
+      if (displayRef.current) {
+        displayRef.current.replaceChildren();
       }
       setPrintJob((prev) => {
         if (prev?.url) URL.revokeObjectURL(prev.url);
@@ -737,6 +759,7 @@ export const RemoteDesktopView: React.FC = () => {
         open={downloadDialogOpen}
         onOpenChange={setDownloadDialogOpen}
         container={rootRef.current}
+        vmId={vmId}
       />
 
       <Dialog

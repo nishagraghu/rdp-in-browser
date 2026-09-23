@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
 
@@ -86,6 +87,7 @@ export const VmManagement: React.FC = () => {
       disableFileUpload: false,
       drivePath: '',
       createDrivePath: false,
+      commonDrive: false,
       staticChannelNames: '',
       normalizeClipboard: 'preserve',
       disableCopy: false,
@@ -123,6 +125,10 @@ export const VmManagement: React.FC = () => {
         if (!editingVm && !value) return false;
         return true;
       }),
+      drivePath: yup.string().test('common-folder', 'Enter the common folder name', function (value) {
+        if (!this.parent.enableDrive || !this.parent.commonDrive) return true;
+        return !!String(value || '').trim();
+      }),
     }),
     onSubmit: async (values) => {
       setModalError(null);
@@ -156,8 +162,9 @@ export const VmManagement: React.FC = () => {
         driveName: values.driveName.trim() || undefined,
         disableFileDownload: values.disableFileDownload,
         disableFileUpload: values.disableFileUpload,
-        drivePath: values.drivePath.trim() || undefined,
-        createDrivePath: values.createDrivePath,
+        drivePath: values.commonDrive ? values.drivePath.trim() : values.drivePath.trim() || undefined,
+        createDrivePath: values.commonDrive ? false : values.createDrivePath,
+        commonDrive: values.commonDrive,
         staticChannelNames: values.staticChannelNames.trim() || undefined,
         normalizeClipboard: values.normalizeClipboard,
         disableCopy: values.disableCopy,
@@ -248,6 +255,7 @@ export const VmManagement: React.FC = () => {
       disableFileUpload: !!vm.disableFileUpload,
       drivePath: vm.drivePath || '',
       createDrivePath: !!vm.createDrivePath,
+      commonDrive: !!vm.commonDrive,
       staticChannelNames: vm.staticChannelNames || '',
       normalizeClipboard:
         vm.normalizeClipboard === 'unix' || vm.normalizeClipboard === 'windows'
@@ -957,8 +965,9 @@ export const VmManagement: React.FC = () => {
               <div className="space-y-2 bg-muted/20 p-3 rounded-md border">
                 <h4 className="text-sm font-medium mb-3">Shared Drive</h4>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Maps to the host folder (<code className="text-[10px]">DRIVES_PATH/&#123;username&#125;</code>).
-                  Files copied in the remote session appear on the host; files placed on the host appear in the session.
+                  {formik.values.commonDrive
+                    ? 'Everyone uses one existing folder. This app does not create it.'
+                    : <>Each user gets a folder (<code className="text-[10px]">DRIVES_PATH/&#123;username&#125;</code>), created automatically.</>}
                 </p>
                 <div className="flex items-center justify-between gap-3 py-0.5">
                   <Label htmlFor="enableDrive" className="font-normal text-xs">Enable shared drive</Label>
@@ -970,6 +979,40 @@ export const VmManagement: React.FC = () => {
                       <Label htmlFor="driveName" className="text-xs">Drive name (in remote session)</Label>
                       <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Shared Drive" className="h-7 text-xs" />
                     </div>
+                    <div className="flex items-center justify-between gap-3 py-0.5 sm:col-span-2">
+                      <div>
+                        <Label htmlFor="commonDrive" className="font-normal text-xs">Common folder</Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          On: one folder for everyone. Off: a separate folder per user.
+                        </p>
+                      </div>
+                      <Switch
+                        id="commonDrive"
+                        checked={formik.values.commonDrive}
+                        onCheckedChange={(checked) => formik.setFieldValue('commonDrive', checked)}
+                      />
+                    </div>
+                    {formik.values.commonDrive && (
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label htmlFor="drivePath" className="text-xs">Folder name</Label>
+                        <Input
+                          id="drivePath"
+                          name="drivePath"
+                          value={formik.values.drivePath}
+                          onChange={formik.handleChange}
+                          onBlur={formik.handleBlur}
+                          placeholder="common"
+                          className="h-7 text-xs"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Folder that already exists under DRIVES_PATH. Example: common is DRIVES_PATH/common.
+                          Create it on the host before saving. Everyone can see files in it, add files, and remove files.
+                        </p>
+                        {formik.touched.drivePath && formik.errors.drivePath && (
+                          <p className="text-[10px] text-destructive">{formik.errors.drivePath}</p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-col gap-3 col-span-1 sm:col-span-2">
                       <div className="flex items-center justify-between gap-3 py-0.5">
                         <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable browser upload into shared drive</Label>

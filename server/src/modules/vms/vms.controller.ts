@@ -12,6 +12,34 @@ import {
   normalizeAccessTime,
   normalizeAccessDate,
 } from '../../shared';
+import { commonDriveExists, normalizeCommonDriveRelative } from '../../utils/userDrive';
+
+function resolveCommonDriveInput(
+  commonDrive: unknown,
+  drivePath: unknown,
+): { commonDrive: boolean; drivePath: string | null } | { error: string } {
+  const enabled = Boolean(commonDrive);
+  if (!enabled) {
+    return {
+      commonDrive: false,
+      drivePath: drivePath ? String(drivePath).trim() : null,
+    };
+  }
+
+  const relative = normalizeCommonDriveRelative(drivePath ? String(drivePath) : '');
+  if (!relative) {
+    return {
+      error: 'Common folder path must be a folder name under the shared drives directory, such as "common".',
+    };
+  }
+  if (!commonDriveExists(relative)) {
+    return {
+      error: `Folder "${relative}" does not exist under the shared drives directory. Create it on the host first. This app will not create it.`,
+    };
+  }
+
+  return { commonDrive: true, drivePath: relative };
+}
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -138,7 +166,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, assignedUserIds,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
@@ -157,6 +185,12 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
     const vmPort = port ? parseInt(String(port), 10) : 3389;
 
     const encryptedPassword = encryptVMPassword(String(password));
+
+    const common = resolveCommonDriveInput(commonDrive, drivePath);
+    if ('error' in common) {
+      res.status(400).json({ success: false, error: common.error });
+      return;
+    }
 
     const parseOptionalInt = (value: unknown): number | null => {
       if (value === undefined || value === null || value === '') return null;
@@ -189,8 +223,9 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         driveName: driveName ? String(driveName).trim() : null,
         disableFileDownload: Boolean(disableFileDownload),
         disableFileUpload: Boolean(disableFileUpload),
-        drivePath: drivePath ? String(drivePath).trim() : null,
-        createDrivePath: Boolean(createDrivePath),
+        drivePath: common.drivePath,
+        createDrivePath: common.commonDrive ? false : Boolean(createDrivePath),
+        commonDrive: common.commonDrive,
         staticChannelNames: staticChannelNames ? String(staticChannelNames).trim() : null,
         normalizeClipboard:
           normalizeClipboard === 'unix' || normalizeClipboard === 'windows'
@@ -258,7 +293,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, isActive,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames,
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout,
@@ -309,8 +344,21 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (driveName !== undefined) updateData.driveName = driveName ? String(driveName).trim() : null;
     if (disableFileDownload !== undefined) updateData.disableFileDownload = Boolean(disableFileDownload);
     if (disableFileUpload !== undefined) updateData.disableFileUpload = Boolean(disableFileUpload);
-    if (drivePath !== undefined) updateData.drivePath = drivePath ? String(drivePath).trim() : null;
-    if (createDrivePath !== undefined) updateData.createDrivePath = Boolean(createDrivePath);
+    if (commonDrive !== undefined || drivePath !== undefined) {
+      const nextCommon = commonDrive !== undefined ? Boolean(commonDrive) : vm.commonDrive;
+      const nextPath = drivePath !== undefined ? drivePath : vm.drivePath;
+      const common = resolveCommonDriveInput(nextCommon, nextPath);
+      if ('error' in common) {
+        res.status(400).json({ success: false, error: common.error });
+        return;
+      }
+      updateData.commonDrive = common.commonDrive;
+      updateData.drivePath = common.drivePath;
+      if (common.commonDrive) updateData.createDrivePath = false;
+    }
+    if (createDrivePath !== undefined && !updateData.commonDrive && commonDrive !== true) {
+      updateData.createDrivePath = Boolean(createDrivePath);
+    }
     
     if (staticChannelNames !== undefined) updateData.staticChannelNames = staticChannelNames ? String(staticChannelNames).trim() : null;
 

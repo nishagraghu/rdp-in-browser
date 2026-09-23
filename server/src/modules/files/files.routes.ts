@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateJWT } from '../../middleware/auth';
-import { upload, uploadFile, listFiles, downloadFile } from './files.controller';
+import { upload, uploadFile, listFiles, downloadFile, deleteDriveEntry } from './files.controller';
 import { AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
@@ -17,6 +17,7 @@ router.post('/upload', (req, res, next) => {
 }, (req, res) => uploadFile(req as AuthenticatedRequest, res));
 
 router.get('/', listFiles);
+router.delete('/', deleteDriveEntry);
 // Nested paths: /files/download?path=Download/report.pdf
 router.get('/download', downloadFile);
 router.get('/download/:filename', downloadFile);
