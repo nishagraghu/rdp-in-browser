@@ -12,7 +12,22 @@ function parsePositiveInt(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function buildWhere(search: string, action: string): Prisma.AuditLogWhereInput {
+function parseDateBound(value: unknown): Date | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  // Accept YYYY-MM-DD (date input) or full ISO timestamps
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T00:00:00.000Z`)
+    : new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function buildWhere(
+  search: string,
+  action: string,
+  startDate: Date | null,
+  endDate: Date | null
+): Prisma.AuditLogWhereInput {
   const where: Prisma.AuditLogWhereInput = {};
 
   if (action) {
@@ -26,6 +41,26 @@ function buildWhere(search: string, action: string): Prisma.AuditLogWhereInput {
       { details: { contains: search } },
       { ipAddress: { contains: search } },
     ];
+  }
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) {
+      where.createdAt.gte = startDate;
+    }
+    if (endDate) {
+      // Inclusive end-of-day when only a calendar date was supplied
+      const end = new Date(endDate);
+      if (
+        end.getUTCHours() === 0 &&
+        end.getUTCMinutes() === 0 &&
+        end.getUTCSeconds() === 0 &&
+        end.getUTCMilliseconds() === 0
+      ) {
+        end.setUTCHours(23, 59, 59, 999);
+      }
+      where.createdAt.lte = end;
+    }
   }
 
   return where;
@@ -48,14 +83,25 @@ function mapLog(l: {
 
 /**
  * Server-side paginated audit log listing.
- * Query: page, pageSize, search, action, export=true
+ * Query: page, pageSize, search, action, startDate, endDate, export=true
  */
 export async function getAuditLogs(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const search = String(req.query.search || '').trim();
     const action = String(req.query.action || '').trim();
+    const startDate = parseDateBound(req.query.startDate);
+    const endDate = parseDateBound(req.query.endDate);
     const exportAll = String(req.query.export || '') === 'true';
-    const where = buildWhere(search, action);
+
+    if (startDate && endDate && startDate > endDate) {
+      res.status(400).json({
+        success: false,
+        error: 'Start date must be on or before end date',
+      });
+      return;
+    }
+
+    const where = buildWhere(search, action, startDate, endDate);
 
     if (exportAll) {
       const [total, logs] = await Promise.all([

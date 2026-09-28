@@ -22,6 +22,9 @@ export interface VmDto {
   hostname: string;
   port: number;
   connectionTimeout?: number;
+  // Concurrent session limits; 0 = unlimited
+  maxConnections?: number;
+  maxConnectionsPerUser?: number;
   username: string;
   domain?: string | null;
   isActive: boolean;

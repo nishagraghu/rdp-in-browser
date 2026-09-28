@@ -154,6 +154,27 @@ Set `DRIVES_PATH` in `.env` to a folder that exists on the host (Windows example
 
 ---
 
+## Connection limits (admin)
+
+Each VM has a **Connection limit** section (admin **VM Management** → Add / Edit VM):
+
+| Field | Meaning |
+|---|---|
+| **Maximum connections** | Total sessions that may be open on this VM at the same time, across all users |
+| **Maximum connections per user** | Sessions a single user may have open on this VM at the same time |
+
+`0` means unlimited (default). The upper bound is 500.
+
+When a limit is reached, new connection attempts are **refused** with a message such as *"Connection limit reached (2 of 2 in use)"*; the user can retry once a session closes. Refusals are recorded in the audit log.
+
+Counts are held in server memory and reset when the server restarts. A session is counted from the moment the user clicks Connect until the remote desktop tunnel closes.
+
+While connected, users see a bar at the bottom of the screen — *"Another user is using this system: alice"* — whenever someone else is on the same VM. The bar can be dismissed and reappears if the set of other users changes.
+
+Admins with the session permissions see **Active sessions** on VM Management and can **Log out** a session. That disconnects the remote desktop immediately. Only administrators have these permissions by default.
+
+---
+
 ## Using the app (end users)
 
 1. Open the application URL your admin gave you.

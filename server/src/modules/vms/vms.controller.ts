@@ -9,6 +9,7 @@ import {
   VmProtocol,
   AuditAction,
   clampConnectionTimeout,
+  clampConnectionLimit,
   normalizeAccessTime,
   normalizeAccessDate,
 } from '../../shared';
@@ -169,7 +170,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
-      connectionTimeout,
+      connectionTimeout, maxConnections, maxConnectionsPerUser,
       allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
@@ -206,6 +207,8 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         hostname: String(hostname).trim(),
         port: vmPort,
         connectionTimeout: clampConnectionTimeout(connectionTimeout),
+        maxConnections: clampConnectionLimit(maxConnections),
+        maxConnectionsPerUser: clampConnectionLimit(maxConnectionsPerUser),
         username: String(username).trim(),
         encryptedPassword,
         domain: domain ? String(domain).trim() : null,
@@ -296,7 +299,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
-      connectionTimeout,
+      connectionTimeout, maxConnections, maxConnectionsPerUser,
       allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
@@ -323,6 +326,8 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (hostname) updateData.hostname = String(hostname).trim();
     if (port) updateData.port = parseInt(String(port), 10);
     if (connectionTimeout !== undefined) updateData.connectionTimeout = clampConnectionTimeout(connectionTimeout);
+    if (maxConnections !== undefined) updateData.maxConnections = clampConnectionLimit(maxConnections);
+    if (maxConnectionsPerUser !== undefined) updateData.maxConnectionsPerUser = clampConnectionLimit(maxConnectionsPerUser);
     if (username) updateData.username = String(username).trim();
     if (password) updateData.encryptedPassword = encryptVMPassword(String(password));
     if (domain !== undefined) updateData.domain = domain ? String(domain).trim() : null;

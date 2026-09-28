@@ -32,6 +32,9 @@ model VM {
   port              Int                @default(3389)
   // Seconds to wait for the RDP handshake before failing the session
   connectionTimeout Int                @default(15)
+  // Concurrent session limits. 0 = unlimited.
+  maxConnections        Int            @default(0)
+  maxConnectionsPerUser Int            @default(0)
   username          String
   encryptedPassword String
   domain            String?

@@ -25,6 +25,17 @@ export function clampConnectionTimeout(value: unknown, fallback = DEFAULT_CONNEC
   return parseInt(raw, 10);
 }
 
+export const MAX_CONNECTION_LIMIT = 500;
+
+/** Clamp a concurrent-connection limit. 0 means unlimited; invalid values fall back to 0. */
+export function clampConnectionLimit(value: unknown, fallback = 0): number {
+  const raw = String(value ?? '').trim();
+  if (!validator.isInt(raw, { min: 0, max: MAX_CONNECTION_LIMIT })) {
+    return fallback;
+  }
+  return parseInt(raw, 10);
+}
+
 /** Normalize optional "HH:mm" time; empty/invalid → null. */
 export function normalizeAccessTime(value: unknown): string | null {
   if (value === undefined || value === null) return null;

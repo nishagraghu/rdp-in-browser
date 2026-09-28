@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason } from '../../shared';
 import { config } from '../../config/env';
 import { ensureUserDriveDirectory, guacDrivePath, normalizeCommonDriveRelative } from '../../utils/userDrive';
+import * as sessionRegistry from '../sessions/sessionRegistry';
 
 const KEY = Buffer.from(
   config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'),
@@ -54,6 +55,7 @@ function makeGuacamoleToken(params: {
   normalizeClipboard?: string | null;
   disableCopy?: boolean;
   disablePaste?: boolean;
+  meta?: sessionRegistry.SessionMeta;
 }): string {
   const settings: Record<string, string> = {
     hostname: params.hostname,
@@ -116,17 +118,85 @@ function makeGuacamoleToken(params: {
   setFlag(settings, 'disable-copy', params.disableCopy);
   setFlag(settings, 'disable-paste', params.disablePaste);
 
+  // `meta` is read back server-side from the decrypted token on the guacamole-lite
+  // open/close events; guacd never sees it (only `connection` is forwarded).
   const payload = {
     connection: {
       type: 'rdp',
       settings,
     },
+    meta: params.meta,
   };
 
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', KEY, iv);
   const enc = cipher.update(JSON.stringify(payload), 'utf8', 'base64') + cipher.final('base64');
   return Buffer.from(JSON.stringify({ iv: iv.toString('base64'), value: enc })).toString('base64');
+}
+
+function checkConnectionLimits(
+  vm: { id: string; maxConnections: number; maxConnectionsPerUser: number },
+  userId: string,
+): string | null {
+  if (vm.maxConnections > 0) {
+    const inUse = sessionRegistry.countForVm(vm.id);
+    if (inUse >= vm.maxConnections) {
+      return `Connection limit reached (${inUse} of ${vm.maxConnections} in use). Try again later.`;
+    }
+  }
+  if (vm.maxConnectionsPerUser > 0) {
+    const mine = sessionRegistry.countForUserOnVm(vm.id, userId);
+    if (mine >= vm.maxConnectionsPerUser) {
+      return `You already have ${mine} session${mine === 1 ? '' : 's'} on this desktop (limit ${vm.maxConnectionsPerUser}). Close one before connecting again.`;
+    }
+  }
+  return null;
+}
+
+type VmAccessResult =
+  | { status: number; error: string }
+  | { vm: { id: string } };
+
+async function loadVmForUser(req: AuthenticatedRequest, vmId: string): Promise<VmAccessResult> {
+  const vm = await prisma.vM.findUnique({
+    where: { id: vmId },
+    select: { id: true, isActive: true, assignments: { select: { userId: true } } },
+  });
+  if (!vm) return { status: 404, error: 'VM configuration not found' };
+  if (req.user?.role !== UserRole.ADMIN && !vm.assignments.some((a) => a.userId === req.user?.userId)) {
+    return { status: 403, error: 'Access denied. You are not assigned to this remote desktop.' };
+  }
+  return { vm: { id: vm.id } };
+}
+
+/** Active sessions on a VM, so the remote view can show who else is connected. */
+export async function listVmSessions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthenticated' });
+      return;
+    }
+
+    const result = await loadVmForUser(req, req.params.id);
+    if ('error' in result) {
+      res.status(result.status).json({ success: false, error: result.error });
+      return;
+    }
+
+    const mySessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
+    const sessions = sessionRegistry.listForVm(result.vm.id).map((s) => ({
+      sessionId: s.sessionId,
+      username: s.username,
+      connectedAt: (s.connectedAt || s.createdAt).toISOString(),
+      isMine: s.sessionId === mySessionId || (!mySessionId && s.userId === userId),
+    }));
+
+    res.json({ success: true, data: { sessions } });
+  } catch (error) {
+    console.error('listVmSessions error:', error);
+    res.status(500).json({ success: false, error: 'Failed to list sessions' });
+  }
 }
 
 export async function connectVmSession(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -228,7 +298,33 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
           ? height
           : 1080;
 
+    // Concurrent-session limits (0 = unlimited). Checked and reserved together so
+    // two near-simultaneous connects cannot both slip under the cap.
+    const username = req.user?.username || 'unknown';
+    const limitError = checkConnectionLimits(vm, userId);
+    if (limitError) {
+      await createAuditLog({
+        userId,
+        userName: username,
+        action: AuditAction.AUTH_FAILURE,
+        details: `Connection to VM ${vm.name} (${vm.id}) refused: ${limitError}`,
+        ipAddress: req.ip,
+      });
+      res.status(409).json({ success: false, error: limitError });
+      return;
+    }
+
+    const sessionMeta: sessionRegistry.SessionMeta = {
+      sessionId: crypto.randomUUID(),
+      userId,
+      username,
+      vmId: vm.id,
+      vmName: vm.name,
+    };
+    sessionRegistry.reserve(sessionMeta);
+
     const token = makeGuacamoleToken({
+      meta: sessionMeta,
       hostname: vm.hostname,
       port: vm.port,
       username: vm.username,
@@ -288,6 +384,7 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       data: {
         token,
         wsUrl,
+        sessionId: sessionMeta.sessionId,
         vm: {
           id: vm.id,
           name: vm.name,

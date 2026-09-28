@@ -1,10 +1,19 @@
-# Local frontend development override.
+# Local development override.
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 #   cd frontend && npm run dev
 # Then open http://localhost:5173 (hot reload). Keep Docker for API + guacd.
+#
+# Running the backend locally instead (cd server && npm run dev)?
+# It expects guacd on localhost:4822, so publish it:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d guacd
+# and point DRIVES_PATH at server/drives so shared-drive files line up.
 
 services:
+  guacd:
+    ports:
+      - "${GUACD_PORT:-4822}:4822"
+
   server:
     ports:
       - "${PORT:-3001}:3001"

@@ -31,7 +31,9 @@ import {
   ChevronUp,
   Upload,
   Download,
-  Printer
+  Printer,
+  Users,
+  X
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
@@ -45,6 +47,29 @@ import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
 import { clampConnectionTimeout } from '@rdp/shared';
 import { attachRdpClipboard, type RdpClipboardBridge } from '@/lib/rdpClipboard';
+
+/**
+ * Turn guacd/guacamole-lite error text into something a user (or the admin they
+ * forward it to) can act on. guacd's own messages are terse and end in "?".
+ */
+function describeGuacError(status: Guacamole.Status): string {
+  const raw = status.message || '';
+  if (/desktop service unavailable/i.test(raw)) {
+    return 'The remote desktop gateway (guacd) is not running or cannot be reached from the server. Ask an administrator to start it and try again.';
+  }
+  if (/account locked|disabled/i.test(raw)) {
+    return 'The remote Windows account is locked out or disabled on the target machine (usually too many failed sign-in attempts against its RDP port). Unlock the account on that machine or wait for the lockout period to end, then retry.';
+  }
+  if (/authentication failure|invalid credentials/i.test(raw)) {
+    return 'The target machine rejected the saved username or password. Ask an administrator to check the credentials configured for this desktop.';
+  }
+  if (/security negotiation failed/i.test(raw)) {
+    return 'The target machine refused the RDP security mode. Ask an administrator to check the NLA/TLS settings on that machine.';
+  }
+  if (raw) return raw;
+  const code = Number.isFinite(status.code) ? `0x${status.code.toString(16)}` : 'unknown';
+  return `Remote desktop connection failed (error code: ${code})`;
+}
 
 export const RemoteDesktopView: React.FC = () => {
   const { vmId } = useParams<{ vmId: string }>();
@@ -68,6 +93,12 @@ export const RemoteDesktopView: React.FC = () => {
   const printFrameRef = useRef<HTMLIFrameElement>(null);
   const [toolbarRevealed, setToolbarRevealed] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
+
+  // Who else is on this desktop right now (populated by polling /vms/:id/sessions).
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [otherUsers, setOtherUsers] = useState<string[]>([]);
+  const [bannerDismissedFor, setBannerDismissedFor] = useState<string | null>(null);
+  const knownOtherUsersRef = useRef<Set<string>>(new Set());
 
   // ESC long press tracking state
   const [escProgress, setEscProgress] = useState(0);
@@ -350,6 +381,9 @@ export const RemoteDesktopView: React.FC = () => {
     const initSession = async () => {
       setConnectionStatus('connecting');
       setErrorMessage(null);
+      setSessionId(null);
+      setOtherUsers([]);
+      knownOtherUsersRef.current = new Set();
 
       if (vmId) {
         dispatch(startVmConnection({ id: vmId, name: 'Remote Desktop' }));
@@ -369,9 +403,10 @@ export const RemoteDesktopView: React.FC = () => {
           throw new Error(res.data.error || 'Failed to initiate remote session');
         }
 
-        const { token, vm } = res.data.data;
+        const { token, vm, sessionId: newSessionId } = res.data.data;
         const timeoutSec = clampConnectionTimeout(vm.connectionTimeout);
         setVmInfo(vm);
+        setSessionId(typeof newSessionId === 'string' ? newSessionId : null);
         dispatch(startVmConnection({ id: vm.id, name: vm.name }));
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -387,10 +422,7 @@ export const RemoteDesktopView: React.FC = () => {
             connectTimeoutId = null;
           }
           console.error('Guacamole client error:', errorState);
-          const message =
-            errorState.message ||
-            `Remote desktop connection failed (error code: 0x${errorState.code.toString(16)})`;
-          setErrorMessage(message);
+          setErrorMessage(describeGuacError(errorState));
           setConnectionStatus('error');
           dispatch(endVmConnection());
         };
@@ -570,6 +602,8 @@ export const RemoteDesktopView: React.FC = () => {
 
     return () => {
       cancelled = true;
+      setSessionId(null);
+      setOtherUsers([]);
       dispatch(endVmConnection());
       clipboardBridge?.detach();
       clipboardBridge = null;
@@ -593,6 +627,52 @@ export const RemoteDesktopView: React.FC = () => {
       });
     };
   }, [vmId, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
+
+  // Poll who else is connected to this desktop while our session is live.
+  useEffect(() => {
+    if (!vmId || !sessionId || connectionStatus !== 'connected') return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const res = await api.get(`/vms/${vmId}/sessions`, { params: { sessionId } });
+        if (cancelled) return;
+        const sessions: Array<{ sessionId: string; username: string; isMine: boolean }> =
+          res.data?.data?.sessions || [];
+        const names = Array.from(
+          new Set(sessions.filter((s) => !s.isMine).map((s) => s.username)),
+        ).sort();
+
+        const newcomers = names.filter((n) => !knownOtherUsersRef.current.has(n));
+        if (newcomers.length > 0) {
+          toast.warning(
+            newcomers.length === 1
+              ? `Another user is using this system: ${newcomers[0]}`
+              : `Other users are using this system: ${newcomers.join(', ')}`,
+            { duration: 8000 },
+          );
+        }
+        knownOtherUsersRef.current = new Set(names);
+        setOtherUsers((prev) => (prev.join('|') === names.join('|') ? prev : names));
+      } catch {
+        // Transient failure (network blip, token refresh) — keep the last known state.
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 5000);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [vmId, sessionId, connectionStatus]);
+
+  const otherUsersKey = otherUsers.join('|');
+  const showSharedBanner =
+    connectionStatus === 'connected' && otherUsers.length > 0 && bannerDismissedFor !== otherUsersKey;
 
   const goToDashboard = () => {
     navigate('/dashboard', { state: DASHBOARD_SHOW_LIST_STATE });
@@ -1116,7 +1196,11 @@ export const RemoteDesktopView: React.FC = () => {
               <AlertTriangle className="w-10 h-10" />
             </div>
             <div>
-              <h3 className="text-xl font-bold">Remote Session Connection Failed</h3>
+              <h3 className="text-xl font-bold">
+                {errorMessage?.includes('ended by an administrator')
+                  ? 'Session ended'
+                  : 'Remote Session Connection Failed'}
+              </h3>
               <p className="text-sm text-destructive max-w-md mx-auto mt-2 font-mono text-xs">
                 {errorMessage || 'Unable to connect to target RDP host via Guacamole.'}
               </p>
@@ -1180,6 +1264,30 @@ export const RemoteDesktopView: React.FC = () => {
           />
         </div>
       </main>
+
+      {showSharedBanner && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute bottom-0 inset-x-0 z-40 flex items-center gap-3 border-t border-amber-500/40 bg-amber-500/95 px-4 py-2 text-sm text-amber-950 shadow-lg backdrop-blur"
+        >
+          <Users className="h-4 w-4 shrink-0" />
+          <span className="flex-1 truncate">
+            {otherUsers.length === 1
+              ? <>Another user is using this system: <strong>{otherUsers[0]}</strong></>
+              : <>Other users are using this system: <strong>{otherUsers.join(', ')}</strong></>}
+          </span>
+          <button
+            type="button"
+            onClick={() => setBannerDismissedFor(otherUsersKey)}
+            className="rounded p-1 hover:bg-amber-600/30 focus:outline-none focus:ring-2 focus:ring-amber-800"
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

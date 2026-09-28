@@ -228,6 +228,10 @@ docker compose up -d
 
 Persistent data lives in Docker volume `rdp-server-data` (SQLite). Shared drive files live on the host path set by `DRIVES_PATH` (default `D:/rdp_shared`).
 
+### Per-VM connection limits
+
+Admins can set **Maximum connections** and **Maximum connections per user** on each VM (0 = unlimited, max 500). Connections beyond a limit are refused with HTTP 409. Session counts are tracked in the server process's memory, so they reset to zero on a server restart; running a single backend replica is required for the limits to be accurate.
+
 ---
 
 ## Backup and Restore
