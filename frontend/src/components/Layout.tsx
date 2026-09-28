@@ -13,7 +13,6 @@ import {
   ChevronUp,
   Settings2,
   ClipboardList,
-  KeyRound,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -45,7 +44,6 @@ export const Layout: React.FC = () => {
     { name: 'Assignments Matrix', path: '/admin/assignments', icon: SlidersHorizontal },
     { name: 'Audit Report', path: '/admin/audit', icon: ClipboardList },
     { name: 'Admin Configuration', path: '/admin/configuration', icon: Settings2 },
-    { name: 'License', path: '/admin/license', icon: KeyRound },
     { name: 'User View', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },
   ];

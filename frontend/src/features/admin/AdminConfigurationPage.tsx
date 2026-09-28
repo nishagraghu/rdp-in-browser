@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ImagePlus, Trash2, Upload, RefreshCw, Mail, Save, Send } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { ImagePlus, Trash2, Upload, RefreshCw, Mail, Save, Send, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,13 +19,31 @@ import {
 } from '../../api/settings';
 import { SmtpEncryption } from '@rdp/shared';
 import defaultLogo from '../../logo.png';
+import { LicenseSettingsPanel } from './LicensePage';
 
 const ACCEPTED = 'image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml';
 
-type ConfigTab = 'logo' | 'smtp';
+type ConfigTab = 'logo' | 'smtp' | 'license';
+
+const VALID_TABS = new Set<ConfigTab>(['logo', 'smtp', 'license']);
 
 export const AdminConfigurationPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('logo');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialTab: ConfigTab =
+    tabParam && VALID_TABS.has(tabParam as ConfigTab) ? (tabParam as ConfigTab) : 'logo';
+  const [activeTab, setActiveTab] = useState<ConfigTab>(initialTab);
+
+  useEffect(() => {
+    if (tabParam && VALID_TABS.has(tabParam as ConfigTab) && tabParam !== activeTab) {
+      setActiveTab(tabParam as ConfigTab);
+    }
+  }, [tabParam, activeTab]);
+
+  const selectTab = (id: ConfigTab) => {
+    setActiveTab(id);
+    setSearchParams(id === 'logo' ? {} : { tab: id }, { replace: true });
+  };
 
   // Logo state
   const [logoSettings, setLogoSettings] = useState<CustomerLogoSettings | null>(null);
@@ -189,6 +208,7 @@ export const AdminConfigurationPage: React.FC = () => {
   const tabs: { id: ConfigTab; label: string; icon: React.ElementType }[] = [
     { id: 'logo', label: 'Custom Logo', icon: ImagePlus },
     { id: 'smtp', label: 'SMTP Configuration', icon: Mail },
+    { id: 'license', label: 'License', icon: KeyRound },
   ];
 
   return (
@@ -196,17 +216,17 @@ export const AdminConfigurationPage: React.FC = () => {
       <div className="border-b pb-5">
         <h1 className="text-2xl font-bold tracking-tight">Admin Configuration</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage branding and email delivery settings used across the portal.
+          Manage branding, email delivery, and licensing settings used across the portal.
         </p>
       </div>
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            onClick={() => selectTab(id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
               activeTab === id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -471,6 +491,8 @@ export const AdminConfigurationPage: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 'license' && <LicenseSettingsPanel />}
     </div>
   );
 };
