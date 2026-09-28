@@ -11,7 +11,7 @@ import {
   LayoutDashboard, 
   SlidersHorizontal,
   ChevronUp,
-  ImageIcon,
+  Settings2,
   ClipboardList,
   KeyRound,
 } from 'lucide-react';
@@ -44,7 +44,7 @@ export const Layout: React.FC = () => {
     { name: 'VM Management', path: '/admin/vms', icon: Monitor },
     { name: 'Assignments Matrix', path: '/admin/assignments', icon: SlidersHorizontal },
     { name: 'Audit Report', path: '/admin/audit', icon: ClipboardList },
-    { name: 'Customer Logo', path: '/admin/branding', icon: ImageIcon },
+    { name: 'Admin Configuration', path: '/admin/configuration', icon: Settings2 },
     { name: 'License', path: '/admin/license', icon: KeyRound },
     { name: 'User View', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },

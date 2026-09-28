@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 
 export const UserManagement: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -142,6 +143,22 @@ export const UserManagement: React.FC = () => {
     }
   };
 
+  const handleToggle2FA = async (user: UserDto) => {
+    const nextEnabled = !user.email2faEnabled;
+    const res = await dispatch(
+      updateUser({ id: user.id, data: { email2faEnabled: nextEnabled } }),
+    );
+    if (updateUser.fulfilled.match(res)) {
+      toast.success(
+        nextEnabled
+          ? `Two-factor authentication enabled for ${user.username}`
+          : `Two-factor authentication disabled for ${user.username}`,
+      );
+    } else {
+      toast.error((res.payload as string) || 'Failed to update 2FA setting');
+    }
+  };
+
   const handleDeleteUser = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this user? All assignments will be removed.')) {
       await dispatch(deleteUser(id));
@@ -168,7 +185,7 @@ export const UserManagement: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage portal users, administrative roles, and disable accounts to block login
+            Manage portal users, roles, two-factor authentication, and account access
           </p>
         </div>
         <Button onClick={handleOpenAdd} className="gap-2">
@@ -234,6 +251,7 @@ export const UserManagement: React.FC = () => {
                   <TableHead>User Details</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>2FA</TableHead>
                   <TableHead>VM Count</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -269,6 +287,26 @@ export const UserManagement: React.FC = () => {
                             <XCircle className="w-4 h-4 mr-1" /> Disabled
                           </span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={Boolean(u.email2faEnabled)}
+                            onCheckedChange={() => handleToggle2FA(u)}
+                            title={
+                              u.email2faEnabled
+                                ? 'Disable two-factor authentication'
+                                : 'Enable two-factor authentication'
+                            }
+                          />
+                          <span
+                            className={`text-xs font-medium ${
+                              u.email2faEnabled ? 'text-emerald-600' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {u.email2faEnabled ? 'On' : 'Off'}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {u._count?.assignments || 0} VMs assigned

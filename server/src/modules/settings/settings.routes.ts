@@ -2,7 +2,10 @@ import { Router, Request, Response, NextFunction } from 'express';
 import {
   deleteCustomerLogo,
   getLogoSettings,
+  getSmtpSettings,
   logoUpload,
+  testSmtpSettings,
+  updateSmtpSettings,
   uploadCustomerLogo,
 } from './settings.controller';
 import { authenticateJWT, requireRole } from '../../middleware/auth';
@@ -30,5 +33,9 @@ router.post(
 );
 
 router.delete('/logo', authenticateJWT, requireRole(UserRole.ADMIN), deleteCustomerLogo);
+
+router.get('/smtp', authenticateJWT, requireRole(UserRole.ADMIN), getSmtpSettings);
+router.put('/smtp', authenticateJWT, requireRole(UserRole.ADMIN), updateSmtpSettings);
+router.post('/smtp/test', authenticateJWT, requireRole(UserRole.ADMIN), testSmtpSettings);
 
 export default router;

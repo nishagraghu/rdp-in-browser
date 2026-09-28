@@ -9,18 +9,20 @@ datasource db {
 }
 
 model User {
-  id           String             @id @default(uuid())
-  name         String
-  email        String             @unique
-  username     String             @unique
-  passwordHash String
-  role         String             @default("USER")
-  isActive     Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  assignments  VMUserAssignment[]
-  refreshTokens RefreshToken[]
-  auditLogs    AuditLog[]
+  id              String             @id @default(uuid())
+  name            String
+  email           String             @unique
+  username        String             @unique
+  passwordHash    String
+  role            String             @default("USER")
+  isActive        Boolean            @default(true)
+  email2faEnabled Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  assignments     VMUserAssignment[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  twoFactorCodes  TwoFactorCode[]
 }
 
 model VM {
@@ -133,13 +135,38 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
-/// Singleton-style app branding settings (id is always "default").
+/// Singleton-style app branding + SMTP settings (id is always "default").
 model AppSettings {
   id               String   @id @default("default")
   logoFileName     String?
   logoOriginalName String?
   logoMimeType     String?
   logoPath         String?
-  updatedAt        DateTime @updatedAt
-  updatedById      String?
+
+  // SMTP configuration (password stored encrypted)
+  smtpHost              String?
+  smtpPort              Int?
+  smtpUsername          String?
+  smtpPasswordEncrypted String?
+  smtpEncryption        String?  // none | starttls | ssl
+  smtpFromEmail         String?
+  smtpFromName          String?
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+/// Short-lived email OTP codes for two-factor authentication.
+model TwoFactorCode {
+  id           String   @id @default(uuid())
+  userId       String
+  codeHash     String
+  challengeToken String @unique
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

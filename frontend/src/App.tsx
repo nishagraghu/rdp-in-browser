@@ -16,7 +16,7 @@ import { Toaster } from 'sonner';
 import { VmManagement } from './features/admin/VmManagement';
 import { VmFormPage } from './features/admin/VmFormPage';
 import { AssignmentsPage } from './features/admin/AssignmentsPage';
-import { BrandingSettings } from './features/admin/BrandingSettings';
+import { AdminConfigurationPage } from './features/admin/AdminConfigurationPage';
 import { AuditReportPage } from './features/admin/AuditReportPage';
 import { LicensePage } from './features/admin/LicensePage';
 import { RemoteDesktopView } from './features/remote/RemoteDesktopView';
@@ -63,7 +63,8 @@ export default function App() {
               <Route path="/admin/vms/:id/edit" element={<VmFormPage />} />
               <Route path="/admin/assignments" element={<AssignmentsPage />} />
               <Route path="/admin/audit" element={<AuditReportPage />} />
-              <Route path="/admin/branding" element={<BrandingSettings />} />
+              <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+              <Route path="/admin/branding" element={<Navigate to="/admin/configuration" replace />} />
               <Route path="/admin/license" element={<LicensePage />} />
             </Route>
           </Route>

@@ -7,11 +7,26 @@ export interface UserDto {
   username: string;
   role: UserRole;
   isActive: boolean;
+  email2faEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   _count?: {
     assignments: number;
   };
+}
+
+export type SmtpEncryption = 'none' | 'starttls' | 'ssl';
+
+export interface SmtpSettingsDto {
+  configured: boolean;
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  hasPassword: boolean;
+  encryption: SmtpEncryption | null;
+  fromEmail: string | null;
+  fromName: string | null;
+  updatedAt: string;
 }
 
 export interface VmDto {
@@ -115,8 +130,12 @@ export interface AuthTokens {
 }
 
 export interface LoginResponseData {
-  user: UserDto;
-  accessToken: string;
+  user?: UserDto;
+  accessToken?: string;
+  requires2FA?: boolean;
+  challengeToken?: string;
+  emailHint?: string;
+  expiresInSeconds?: number;
 }
 
 export interface ConnectSessionResponse {
