@@ -292,7 +292,9 @@ export const UserManagement: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <Switch
                             checked={Boolean(u.email2faEnabled)}
-                            onCheckedChange={() => handleToggle2FA(u)}
+                            onCheckedChange={() => {
+                              void handleToggle2FA(u);
+                            }}
                             title={
                               u.email2faEnabled
                                 ? 'Disable two-factor authentication'
