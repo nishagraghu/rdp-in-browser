@@ -28,7 +28,6 @@ import {
   Scan,
   Keyboard,
   ChevronDown,
-  ChevronUp,
   Upload,
   Download,
   Printer,
@@ -91,21 +90,13 @@ export const RemoteDesktopView: React.FC = () => {
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   const [printJob, setPrintJob] = useState<{ url: string; filename: string } | null>(null);
   const printFrameRef = useRef<HTMLIFrameElement>(null);
-  const [toolbarRevealed, setToolbarRevealed] = useState(false);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
+  const [keysMenuOpen, setKeysMenuOpen] = useState(false);
 
   // Who else is on this desktop right now (populated by polling /vms/:id/sessions).
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [otherUsers, setOtherUsers] = useState<string[]>([]);
   const [bannerDismissedFor, setBannerDismissedFor] = useState<string | null>(null);
   const knownOtherUsersRef = useRef<Set<string>>(new Set());
-
-  // ESC long press tracking state
-  const [escProgress, setEscProgress] = useState(0);
-  const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const escIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const escLongPressTriggeredRef = useRef(false);
-  const escStartTimeRef = useRef(0);
 
   // Scaling & Resolution states
   const [scaleMode, setScaleMode] = useState<'fit' | '100%' | 'custom'>('fit');
@@ -248,32 +239,8 @@ export const RemoteDesktopView: React.FC = () => {
     };
   }, [scaleMode, customScalePercent, applyScale, focusDisplay, updateRemoteDisplaySize]);
 
-  // Fullscreen: reveal toolbar when cursor moves to top edge
-  useEffect(() => {
-    if (!isFullscreen) {
-      setToolbarRevealed(true);
-      return;
-    }
 
-    setToolbarRevealed(false);
-
-    const onMove = (e: MouseEvent) => {
-      if (downloadDialogOpen || disconnectDialogOpen || printJob) {
-        setToolbarRevealed(true);
-        return;
-      }
-      if (e.clientY <= 24) {
-        setToolbarRevealed(true);
-      } else if (e.clientY > 64) {
-        setToolbarRevealed(false);
-      }
-    };
-
-    window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
-  }, [isFullscreen, downloadDialogOpen, disconnectDialogOpen, printJob]);
-
-  // Keyboard shortcut & Escape long press listener
+  // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 1. Upload shortcut: Ctrl + Shift + Alt
@@ -290,45 +257,6 @@ export const RemoteDesktopView: React.FC = () => {
         return;
       }
 
-      // 2. Escape Key Long-Press Handler:
-      // Single tap: passes ESC key to remote RDP VM
-      // Long press (held >= 650ms): toggles toolbar panel collapse
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (!escStartTimeRef.current && !e.repeat) {
-          escStartTimeRef.current = Date.now();
-          escLongPressTriggeredRef.current = false;
-          const LONG_PRESS_MS = 650;
-
-          if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-          if (escTimerRef.current) clearTimeout(escTimerRef.current);
-
-          escIntervalRef.current = setInterval(() => {
-            const elapsed = Date.now() - escStartTimeRef.current;
-            const pct = Math.min(100, Math.round((elapsed / LONG_PRESS_MS) * 100));
-            setEscProgress(pct);
-          }, 35);
-
-          escTimerRef.current = setTimeout(() => {
-            escLongPressTriggeredRef.current = true;
-            if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-            setEscProgress(0);
-            escStartTimeRef.current = 0;
-
-            setIsPanelCollapsed((prev) => {
-              const next = !prev;
-              if (!isFullscreen) {
-                toast.info(next ? 'Minimized to compact bar (Hold ESC to expand)' : 'Full toolbar expanded');
-              }
-              return next;
-            });
-          }, LONG_PRESS_MS);
-        }
-        return;
-      }
-
       if (!isFullscreen) return;
 
       if (isBrowserShortcut(e)) {
@@ -336,34 +264,9 @@ export const RemoteDesktopView: React.FC = () => {
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (escTimerRef.current) clearTimeout(escTimerRef.current);
-        if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-        setEscProgress(0);
-        escStartTimeRef.current = 0;
-
-        if (!escLongPressTriggeredRef.current) {
-          // Short press tap: send ESC key to Guacamole RDP session
-          if (clientRef.current) {
-            clientRef.current.sendKeyEvent(1, 0xff1b); // ESC down
-            clientRef.current.sendKeyEvent(0, 0xff1b); // ESC up
-          }
-        }
-        escLongPressTriggeredRef.current = false;
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-    window.addEventListener('keyup', handleKeyUp, { capture: true });
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
-      window.removeEventListener('keyup', handleKeyUp, { capture: true });
-      if (escTimerRef.current) clearTimeout(escTimerRef.current);
-      if (escIntervalRef.current) clearInterval(escIntervalRef.current);
     };
   }, [isFullscreen]);
 
@@ -794,9 +697,6 @@ export const RemoteDesktopView: React.FC = () => {
 
   const fillViewport = scaleMode === 'fit';
   const isConnecting = !!connectingVm;
-  // Fullscreen + minimized: only the compact floating pill (Windows RDP style)
-  const useCompactPill = isFullscreen || isPanelCollapsed;
-  const pillVisible = !isFullscreen || toolbarRevealed || downloadDialogOpen || disconnectDialogOpen || !!printJob;
 
   const closePrintJob = () => {
     setPrintJob((prev) => {
@@ -902,104 +802,8 @@ export const RemoteDesktopView: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {escProgress > 0 && (
-        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background/95 border border-primary/40 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2">
-          <span className="text-xs font-semibold text-primary">Hold ESC to toggle panel...</span>
-          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-75"
-              style={{ width: `${escProgress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Top hit zone — reveal pill when cursor reaches top in fullscreen */}
-      {!isConnecting && isFullscreen && !pillVisible && (
-        <div
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-4 z-50"
-          onMouseEnter={() => setToolbarRevealed(true)}
-          aria-hidden
-        />
-      )}
-
-      {/* Compact floating pill — fullscreen (auto-hide) and minimized */}
-      {!isConnecting && useCompactPill && (
-        <div
-          className={`fixed top-3 left-1/2 z-50 flex items-center bg-background/90 backdrop-blur-md border border-border/80 rounded-full px-3 py-1.5 shadow-2xl gap-2 transition-all duration-200 ${
-            pillVisible
-              ? '-translate-x-1/2 translate-y-0 opacity-100'
-              : '-translate-x-1/2 -translate-y-8 opacity-0 pointer-events-none'
-          }`}
-          onMouseEnter={() => {
-            if (isFullscreen) setToolbarRevealed(true);
-          }}
-          onMouseLeave={() => {
-            if (isFullscreen && !downloadDialogOpen && !disconnectDialogOpen && !printJob) setToolbarRevealed(false);
-          }}
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-7 px-2.5 text-xs font-medium gap-1.5 rounded-full hover:bg-primary/10 hover:text-primary"
-            title="Upload file to shared drive"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Upload</span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setDownloadDialogOpen(true)}
-            className="h-7 px-2.5 text-xs font-medium gap-1.5 rounded-full hover:bg-primary/10 hover:text-primary"
-            title="Browse and download files from shared drive"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download</span>
-          </Button>
-
-          <div className="h-3.5 w-px bg-border/80" />
-
-          {!isFullscreen && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsPanelCollapsed(false)}
-              className="h-7 px-2 text-xs font-medium gap-1 rounded-full text-muted-foreground hover:text-foreground"
-              title="Expand full toolbar (or Hold ESC)"
-            >
-              <ChevronDown className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Toolbar</span>
-            </Button>
-          )}
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleFullscreen}
-            onMouseDown={(e) => e.preventDefault()}
-            className="h-7 w-7 p-0 rounded-full text-muted-foreground hover:text-foreground"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setDisconnectDialogOpen(true)}
-            className="h-7 w-7 p-0 rounded-full text-destructive hover:bg-destructive/10"
-            title="Disconnect"
-          >
-            <Power className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      )}
-
-      {/* Full session toolbar — windowed expanded only (never in fullscreen) */}
-      {!isConnecting && !isFullscreen && !isPanelCollapsed && (
+      {/* Session navigation toolbar — always shown at the top irrespective of fullscreen */}
+      {!isConnecting && (
         <header className="relative shrink-0 w-full h-11 px-4 bg-background/95 backdrop-blur-md border-b flex items-center justify-between gap-2 z-40">
           <div className="flex items-center space-x-3 min-w-0">
             <Button
@@ -1084,7 +888,7 @@ export const RemoteDesktopView: React.FC = () => {
               </button>
             </div>
 
-            <DropdownMenu>
+            <DropdownMenu open={keysMenuOpen} onOpenChange={setKeysMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
@@ -1138,15 +942,6 @@ export const RemoteDesktopView: React.FC = () => {
               <span className="hidden sm:inline">Download</span>
             </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsPanelCollapsed(true)}
-              className="h-8 w-8 p-0"
-              title="Minimize to compact bar (or Hold ESC)"
-            >
-              <ChevronUp className="w-4 h-4" />
-            </Button>
 
             <Button
               variant="ghost"
@@ -1154,9 +949,9 @@ export const RemoteDesktopView: React.FC = () => {
               onClick={() => { toggleFullscreen(); }}
               onMouseDown={(e) => e.preventDefault()}
               className="h-8 w-8 p-0"
-              title="Enter Fullscreen"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             >
-              <Maximize2 className="w-4 h-4" />
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </Button>
 
             <Button
