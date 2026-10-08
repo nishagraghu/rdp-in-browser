@@ -34,7 +34,7 @@ import {
   Users,
   X
 } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import {
   isBrowserShortcut,
@@ -81,6 +81,7 @@ export const RemoteDesktopView: React.FC = () => {
   const displayRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<Guacamole.Client | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
 
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -188,6 +189,55 @@ export const RemoteDesktopView: React.FC = () => {
   const focusDisplay = useCallback(() => {
     displayRef.current?.focus();
   }, []);
+
+  // Releases all tracked keys in Guacamole and explicitly sends keyup for all modifier keys
+  const releaseAllKeys = useCallback(() => {
+    try {
+      keyboardRef.current?.reset();
+    } catch {
+      // ignore
+    }
+    const client = clientRef.current;
+    if (client) {
+      // Key release (0) for Shift, Ctrl, Alt, Windows, Escape, Tab to ensure no keys stay stuck
+      const modifiers = [
+        0xffe1, // Shift_L
+        0xffe2, // Shift_R
+        0xffe3, // Control_L
+        0xffe4, // Control_R
+        0xffe9, // Alt_L
+        0xffea, // Alt_R
+        0xffeb, // Super_L (Windows)
+        0xffec, // Super_R (Windows)
+        0xff1b, // Escape
+        0xff09, // Tab
+      ];
+      for (const keysym of modifiers) {
+        try {
+          client.sendKeyEvent(0, keysym);
+        } catch {}
+      }
+    }
+  }, []);
+
+  // Prevent stuck keys when user switches tabs, minimizes window, or window loses focus (e.g. Alt+Tab)
+  useEffect(() => {
+    const handleBlur = () => {
+      releaseAllKeys();
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        releaseAllKeys();
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [releaseAllKeys]);
 
   const enterFullscreen = useCallback(async () => {
     const root = rootRef.current;
@@ -513,6 +563,9 @@ export const RemoteDesktopView: React.FC = () => {
           const state = (event as Guacamole.Mouse.Event).state;
           clientRef.current?.sendMouseState(state, true);
         });
+        displayElement.addEventListener('mousedown', () => {
+          focusDisplay();
+        });
 
         display.oncursor = (canvas, x, y) => {
           if (mouse.setCursor(canvas, x, y)) {
@@ -534,6 +587,7 @@ export const RemoteDesktopView: React.FC = () => {
           keyboardTarget.addEventListener('mousedown', () => keyboardTarget.focus());
           
           keyboard = new Guacamole.Keyboard(keyboardTarget);
+          keyboardRef.current = keyboard;
           
           keyboard.onkeydown = (keysym: number) => {
             if (clientRef.current) clientRef.current.sendKeyEvent(1, keysym);
@@ -590,6 +644,12 @@ export const RemoteDesktopView: React.FC = () => {
       if (sendSizeTimerRef.current) clearTimeout(sendSizeTimerRef.current);
       if (resizeObserver) {
         resizeObserver.disconnect();
+      }
+      if (keyboardRef.current) {
+        try {
+          keyboardRef.current.reset();
+        } catch {}
+        keyboardRef.current = null;
       }
       if (clientRef.current) {
         try {
@@ -765,6 +825,10 @@ export const RemoteDesktopView: React.FC = () => {
       client.sendKeyEvent(1, 0xff09); // Tab
       client.sendKeyEvent(0, 0xff09);
       client.sendKeyEvent(0, 0xffe9);
+    } else if (combination === 'RESET') {
+      releaseAllKeys();
+      toast.success('Released stuck keys and reset keyboard state.');
+      focusDisplay();
     }
   };
 
@@ -1004,6 +1068,11 @@ export const RemoteDesktopView: React.FC = () => {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => sendSpecialKey('ESC')} className="justify-between cursor-pointer">
                   <span>Escape</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => sendSpecialKey('RESET')} className="justify-between cursor-pointer text-amber-600 dark:text-amber-400 font-medium">
+                  <span>Release Stuck Keys</span>
+                  <span className="text-[10px] font-mono">Reset</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
