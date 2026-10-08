@@ -186,7 +186,7 @@ export const LoginPage: React.FC = () => {
                 className="mb-5 h-20 w-auto max-w-[260px] object-contain sm:h-24"
               />
               <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                {twoFactorPending ? 'Enter verification code' : 'Log in'}
+                {twoFactorPending ? 'Enter verification code' : 'Log in to your account'}
               </h2>
               {twoFactorPending && (
                 <p className="mt-2 text-xs text-slate-500 sm:text-sm">
