@@ -2,3 +2,11 @@ node_modules/
 dist/
 .env
 *.local
+server/data/*.db
+server/data/*.db-journal
+server/data/uploads/
+server/prisma/data/
+server/uploads/
+server/drives/
+*.tsbuildinfo
+.DS_Store

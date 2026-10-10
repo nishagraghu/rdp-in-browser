@@ -15,16 +15,18 @@ export const AdminDashboard: React.FC = () => {
   const { users } = useSelector((state: RootState) => state.users);
   const { vms } = useSelector((state: RootState) => state.vms);
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
 
   useEffect(() => {
     dispatch(fetchUsers());
     dispatch(fetchVms());
 
-    api.get('/audit-logs')
+    api.get('/audit-logs', { params: { page: 1, pageSize: 20 } })
       .then(res => {
         if (res.data.success) {
-          setAuditLogs(res.data.data);
+          setAuditLogs(res.data.data.items);
+          setAuditTotal(res.data.data.pagination.total);
         }
       })
       .catch(err => console.error(err))
@@ -95,7 +97,7 @@ export const AdminDashboard: React.FC = () => {
                 <Activity className="w-5 h-5" />
               </div>
             </div>
-            <div className="text-3xl font-bold">{auditLogs.length}</div>
+            <div className="text-3xl font-bold">{auditTotal}</div>
           </CardContent>
         </Card>
       </div>
@@ -129,7 +131,7 @@ export const AdminDashboard: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {auditLogs.slice(0, 15).map((log) => (
+                  {auditLogs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {new Date(log.createdAt).toLocaleString()}

@@ -14,13 +14,18 @@ import { AdminDashboard } from './features/admin/AdminDashboard';
 import { UserManagement } from './features/admin/UserManagement';
 import { Toaster } from 'sonner';
 import { VmManagement } from './features/admin/VmManagement';
+import { VmFormPage } from './features/admin/VmFormPage';
 import { AssignmentsPage } from './features/admin/AssignmentsPage';
+import { AdminConfigurationPage } from './features/admin/AdminConfigurationPage';
+import { AuditReportPage } from './features/admin/AuditReportPage';
 import { RemoteDesktopView } from './features/remote/RemoteDesktopView';
+import { VmConnectionLoader } from './components/VmConnectionLoader';
 import { UserRole } from '@rdp/shared';
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>();
   const { isAuthenticated, user, isSetupRequired } = useSelector((state: RootState) => state.auth);
+  const { connectingVm } = useSelector((state: RootState) => state.vms);
 
   useEffect(() => {
     dispatch(checkSetupStatus());
@@ -30,6 +35,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" richColors />
+      {connectingVm && <VmConnectionLoader vmName={connectingVm.name} />}
       <BrowserRouter>
         <Routes>
         {/* Public Routes */}
@@ -52,7 +58,13 @@ export default function App() {
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<UserManagement />} />
               <Route path="/admin/vms" element={<VmManagement />} />
+              <Route path="/admin/vms/new" element={<VmFormPage />} />
+              <Route path="/admin/vms/:id/edit" element={<VmFormPage />} />
               <Route path="/admin/assignments" element={<AssignmentsPage />} />
+              <Route path="/admin/audit" element={<AuditReportPage />} />
+              <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+              <Route path="/admin/branding" element={<Navigate to="/admin/configuration" replace />} />
+              <Route path="/admin/license" element={<Navigate to="/admin/configuration?tab=license" replace />} />
             </Route>
           </Route>
         </Route>

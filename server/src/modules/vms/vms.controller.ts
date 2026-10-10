@@ -4,7 +4,43 @@ import { prisma } from '../../db/prisma';
 import { encryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, VmProtocol, AuditAction } from '../../shared';
+import {
+  UserRole,
+  VmProtocol,
+  AuditAction,
+  clampConnectionTimeout,
+  clampConnectionLimit,
+  normalizeAccessTime,
+  normalizeAccessDate,
+} from '../../shared';
+import { commonDriveExists, normalizeCommonDriveRelative } from '../../utils/userDrive';
+
+function resolveCommonDriveInput(
+  commonDrive: unknown,
+  drivePath: unknown,
+): { commonDrive: boolean; drivePath: string | null } | { error: string } {
+  const enabled = Boolean(commonDrive);
+  if (!enabled) {
+    return {
+      commonDrive: false,
+      drivePath: drivePath ? String(drivePath).trim() : null,
+    };
+  }
+
+  const relative = normalizeCommonDriveRelative(drivePath ? String(drivePath) : '');
+  if (!relative) {
+    return {
+      error: 'Common folder path must be a folder name under the shared drives directory, such as "common".',
+    };
+  }
+  if (!commonDriveExists(relative)) {
+    return {
+      error: `Folder "${relative}" does not exist under the shared drives directory. Create it on the host first. This app will not create it.`,
+    };
+  }
+
+  return { commonDrive: true, drivePath: relative };
+}
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -131,7 +167,14 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, assignedUserIds,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
+      normalizeClipboard, disableCopy, disablePaste,
+      displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      connectionTimeout, maxConnections, maxConnectionsPerUser,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
+      enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
+      enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
+      disableOffscreenCaching, disableGlyphCaching, disableGfx,
     } = req.body;
 
     if (!name || !hostname || !username || !password) {
@@ -144,6 +187,18 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
 
     const encryptedPassword = encryptVMPassword(String(password));
 
+    const common = resolveCommonDriveInput(commonDrive, drivePath);
+    if ('error' in common) {
+      res.status(400).json({ success: false, error: common.error });
+      return;
+    }
+
+    const parseOptionalInt = (value: unknown): number | null => {
+      if (value === undefined || value === null || value === '') return null;
+      const n = parseInt(String(value), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
     const newVm = await prisma.vM.create({
       data: {
         name: String(name).trim(),
@@ -151,10 +206,17 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         protocol: vmProtocol,
         hostname: String(hostname).trim(),
         port: vmPort,
+        connectionTimeout: clampConnectionTimeout(connectionTimeout),
+        maxConnections: clampConnectionLimit(maxConnections),
+        maxConnectionsPerUser: clampConnectionLimit(maxConnectionsPerUser),
         username: String(username).trim(),
         encryptedPassword,
         domain: domain ? String(domain).trim() : null,
         isActive: true,
+        allowAccessAfter: normalizeAccessTime(allowAccessAfter),
+        doNotAllowAccessAfter: normalizeAccessTime(doNotAllowAccessAfter),
+        enableAccountAfter: normalizeAccessDate(enableAccountAfter),
+        disableAccountAfter: normalizeAccessDate(disableAccountAfter),
         supportAudioInConsole: Boolean(supportAudioInConsole),
         disableAudio: Boolean(disableAudio),
         enableAudioInput: Boolean(enableAudioInput),
@@ -164,9 +226,33 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         driveName: driveName ? String(driveName).trim() : null,
         disableFileDownload: Boolean(disableFileDownload),
         disableFileUpload: Boolean(disableFileUpload),
-        drivePath: drivePath ? String(drivePath).trim() : null,
-        createDrivePath: Boolean(createDrivePath),
+        drivePath: common.drivePath,
+        createDrivePath: common.commonDrive ? false : Boolean(createDrivePath),
+        commonDrive: common.commonDrive,
         staticChannelNames: staticChannelNames ? String(staticChannelNames).trim() : null,
+        normalizeClipboard:
+          normalizeClipboard === 'unix' || normalizeClipboard === 'windows'
+            ? normalizeClipboard
+            : 'preserve',
+        disableCopy: Boolean(disableCopy),
+        disablePaste: Boolean(disablePaste),
+        displayWidth: parseOptionalInt(displayWidth),
+        displayHeight: parseOptionalInt(displayHeight),
+        dpi: parseOptionalInt(dpi),
+        colorDepth: colorDepth ? parseInt(String(colorDepth), 10) : 32,
+        forceLossless: Boolean(forceLossless),
+        resizeMethod: resizeMethod === 'reconnect' ? 'reconnect' : 'display-update',
+        readOnly: Boolean(readOnly),
+        enableWallpaper: Boolean(enableWallpaper),
+        enableTheming: Boolean(enableTheming),
+        enableFontSmoothing: enableFontSmoothing !== undefined ? Boolean(enableFontSmoothing) : true,
+        enableFullWindowDrag: Boolean(enableFullWindowDrag),
+        enableDesktopComposition: Boolean(enableDesktopComposition),
+        enableMenuAnimations: Boolean(enableMenuAnimations),
+        disableBitmapCaching: Boolean(disableBitmapCaching),
+        disableOffscreenCaching: Boolean(disableOffscreenCaching),
+        disableGlyphCaching: Boolean(disableGlyphCaching),
+        disableGfx: Boolean(disableGfx),
       },
     });
 
@@ -210,7 +296,14 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     const { 
       name, description, protocol, hostname, port, username, password, domain, isActive,
       supportAudioInConsole, disableAudio, enableAudioInput, enablePrinting, printerName,
-      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, staticChannelNames
+      enableDrive, driveName, disableFileDownload, disableFileUpload, drivePath, createDrivePath, commonDrive, staticChannelNames,
+      normalizeClipboard, disableCopy, disablePaste,
+      displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
+      connectionTimeout, maxConnections, maxConnectionsPerUser,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
+      enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
+      enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
+      disableOffscreenCaching, disableGlyphCaching, disableGfx,
     } = req.body;
 
     const vm = await prisma.vM.findUnique({ where: { id } });
@@ -219,6 +312,12 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       return;
     }
 
+    const parseOptionalInt = (value: unknown): number | null => {
+      if (value === undefined || value === null || value === '') return null;
+      const n = parseInt(String(value), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
     const updateData: Record<string, unknown> = {};
 
     if (name) updateData.name = String(name).trim();
@@ -226,10 +325,18 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (protocol && Object.values(VmProtocol).includes(protocol as VmProtocol)) updateData.protocol = protocol;
     if (hostname) updateData.hostname = String(hostname).trim();
     if (port) updateData.port = parseInt(String(port), 10);
+    if (connectionTimeout !== undefined) updateData.connectionTimeout = clampConnectionTimeout(connectionTimeout);
+    if (maxConnections !== undefined) updateData.maxConnections = clampConnectionLimit(maxConnections);
+    if (maxConnectionsPerUser !== undefined) updateData.maxConnectionsPerUser = clampConnectionLimit(maxConnectionsPerUser);
     if (username) updateData.username = String(username).trim();
     if (password) updateData.encryptedPassword = encryptVMPassword(String(password));
     if (domain !== undefined) updateData.domain = domain ? String(domain).trim() : null;
     if (typeof isActive === 'boolean') updateData.isActive = isActive;
+
+    if (allowAccessAfter !== undefined) updateData.allowAccessAfter = normalizeAccessTime(allowAccessAfter);
+    if (doNotAllowAccessAfter !== undefined) updateData.doNotAllowAccessAfter = normalizeAccessTime(doNotAllowAccessAfter);
+    if (enableAccountAfter !== undefined) updateData.enableAccountAfter = normalizeAccessDate(enableAccountAfter);
+    if (disableAccountAfter !== undefined) updateData.disableAccountAfter = normalizeAccessDate(disableAccountAfter);
     
     if (supportAudioInConsole !== undefined) updateData.supportAudioInConsole = Boolean(supportAudioInConsole);
     if (disableAudio !== undefined) updateData.disableAudio = Boolean(disableAudio);
@@ -242,10 +349,53 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (driveName !== undefined) updateData.driveName = driveName ? String(driveName).trim() : null;
     if (disableFileDownload !== undefined) updateData.disableFileDownload = Boolean(disableFileDownload);
     if (disableFileUpload !== undefined) updateData.disableFileUpload = Boolean(disableFileUpload);
-    if (drivePath !== undefined) updateData.drivePath = drivePath ? String(drivePath).trim() : null;
-    if (createDrivePath !== undefined) updateData.createDrivePath = Boolean(createDrivePath);
+    if (commonDrive !== undefined || drivePath !== undefined) {
+      const nextCommon = commonDrive !== undefined ? Boolean(commonDrive) : vm.commonDrive;
+      const nextPath = drivePath !== undefined ? drivePath : vm.drivePath;
+      const common = resolveCommonDriveInput(nextCommon, nextPath);
+      if ('error' in common) {
+        res.status(400).json({ success: false, error: common.error });
+        return;
+      }
+      updateData.commonDrive = common.commonDrive;
+      updateData.drivePath = common.drivePath;
+      if (common.commonDrive) updateData.createDrivePath = false;
+    }
+    if (createDrivePath !== undefined && !updateData.commonDrive && commonDrive !== true) {
+      updateData.createDrivePath = Boolean(createDrivePath);
+    }
     
     if (staticChannelNames !== undefined) updateData.staticChannelNames = staticChannelNames ? String(staticChannelNames).trim() : null;
+
+    if (normalizeClipboard !== undefined) {
+      updateData.normalizeClipboard =
+        normalizeClipboard === 'unix' || normalizeClipboard === 'windows'
+          ? normalizeClipboard
+          : 'preserve';
+    }
+    if (disableCopy !== undefined) updateData.disableCopy = Boolean(disableCopy);
+    if (disablePaste !== undefined) updateData.disablePaste = Boolean(disablePaste);
+
+    if (displayWidth !== undefined) updateData.displayWidth = parseOptionalInt(displayWidth);
+    if (displayHeight !== undefined) updateData.displayHeight = parseOptionalInt(displayHeight);
+    if (dpi !== undefined) updateData.dpi = parseOptionalInt(dpi);
+    if (colorDepth !== undefined) updateData.colorDepth = parseInt(String(colorDepth), 10) || 32;
+    if (forceLossless !== undefined) updateData.forceLossless = Boolean(forceLossless);
+    if (resizeMethod !== undefined) {
+      updateData.resizeMethod = resizeMethod === 'reconnect' ? 'reconnect' : 'display-update';
+    }
+    if (readOnly !== undefined) updateData.readOnly = Boolean(readOnly);
+
+    if (enableWallpaper !== undefined) updateData.enableWallpaper = Boolean(enableWallpaper);
+    if (enableTheming !== undefined) updateData.enableTheming = Boolean(enableTheming);
+    if (enableFontSmoothing !== undefined) updateData.enableFontSmoothing = Boolean(enableFontSmoothing);
+    if (enableFullWindowDrag !== undefined) updateData.enableFullWindowDrag = Boolean(enableFullWindowDrag);
+    if (enableDesktopComposition !== undefined) updateData.enableDesktopComposition = Boolean(enableDesktopComposition);
+    if (enableMenuAnimations !== undefined) updateData.enableMenuAnimations = Boolean(enableMenuAnimations);
+    if (disableBitmapCaching !== undefined) updateData.disableBitmapCaching = Boolean(disableBitmapCaching);
+    if (disableOffscreenCaching !== undefined) updateData.disableOffscreenCaching = Boolean(disableOffscreenCaching);
+    if (disableGlyphCaching !== undefined) updateData.disableGlyphCaching = Boolean(disableGlyphCaching);
+    if (disableGfx !== undefined) updateData.disableGfx = Boolean(disableGfx);
 
     const updated = await prisma.vM.update({
       where: { id },
@@ -317,7 +467,7 @@ export async function testVmConnection(req: AuthenticatedRequest, res: Response)
     const socket = new net.Socket();
     let isConnected = false;
 
-    socket.setTimeout(4000);
+    socket.setTimeout(clampConnectionTimeout(vm.connectionTimeout) * 1000);
 
     socket.on('connect', () => {
       isConnected = true;

@@ -1,9 +1,8 @@
 import { Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { prisma } from '../../db/prisma';
 import { hashPassword } from '../../utils/password';
 import { createAuditLog } from '../../utils/auditLogger';
+import { ensureUserDriveDirectory } from '../../utils/userDrive';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
 
@@ -35,6 +34,7 @@ export async function getUsers(req: AuthenticatedRequest, res: Response): Promis
         username: true,
         role: true,
         isActive: true,
+        email2faEnabled: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -68,6 +68,7 @@ export async function getUserById(req: AuthenticatedRequest, res: Response): Pro
         username: true,
         role: true,
         isActive: true,
+        email2faEnabled: true,
         createdAt: true,
         updatedAt: true,
         assignments: {
@@ -107,6 +108,14 @@ export async function getUserById(req: AuthenticatedRequest, res: Response): Pro
 
 export async function createUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    if (!req.user || req.user.role !== UserRole.ADMIN) {
+      res.status(403).json({
+        success: false,
+        error: 'Only administrators can create new user accounts. Self-signup is not allowed.',
+      });
+      return;
+    }
+
     const { name, email, username, password, role } = req.body;
 
     if (!name || !email || !username || !password) {
@@ -163,19 +172,14 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
         username: true,
         role: true,
         isActive: true,
+        email2faEnabled: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
     try {
-      const drivesDir = path.join(process.cwd(), 'drives');
-      const userDir = path.join(drivesDir, newUser.username);
-      const downloadDir = path.join(userDir, 'Download');
-      
-      fs.mkdirSync(downloadDir, { recursive: true });
-      fs.chownSync(userDir, 1000, 1000);
-      fs.chownSync(downloadDir, 1000, 1000);
+      ensureUserDriveDirectory(newUser.username);
     } catch (e) {
       console.error('Failed to create user drive directory:', e);
     }
@@ -205,11 +209,16 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
 export async function updateUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, email, role, isActive, password } = req.body;
+    const { name, email, role, isActive, password, email2faEnabled } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       res.status(404).json({ success: false, error: 'User not found' });
+      return;
+    }
+
+    if (typeof isActive === 'boolean' && isActive === false && req.user?.userId === id) {
+      res.status(400).json({ success: false, error: 'You cannot disable your own account' });
       return;
     }
 
@@ -229,6 +238,20 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
     if (typeof isActive === 'boolean') {
       updateData.isActive = isActive;
     }
+    if (typeof email2faEnabled === 'boolean') {
+      if (email2faEnabled) {
+        const settings = await prisma.appSettings.findUnique({ where: { id: 'default' } });
+        const { isSmtpConfigured } = await import('../../utils/email');
+        if (!settings || !isSmtpConfigured(settings)) {
+          res.status(400).json({
+            success: false,
+            error: 'Configure SMTP under Admin Configuration before enabling two-factor authentication.',
+          });
+          return;
+        }
+      }
+      updateData.email2faEnabled = email2faEnabled;
+    }
     if (password) {
       if (!validatePassword(password)) {
         res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
@@ -247,16 +270,37 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
         username: true,
         role: true,
         isActive: true,
+        email2faEnabled: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
+    // Force-logout: revoke all sessions when the account is disabled
+    if (typeof isActive === 'boolean' && isActive === false) {
+      await prisma.refreshToken.deleteMany({ where: { userId: id } });
+      await prisma.twoFactorCode.deleteMany({ where: { userId: id } });
+    }
+
+    // Clear pending 2FA challenges when 2FA is turned off
+    if (typeof email2faEnabled === 'boolean' && email2faEnabled === false) {
+      await prisma.twoFactorCode.deleteMany({ where: { userId: id } });
+    }
+
+    const notes: string[] = [];
+    if (typeof isActive === 'boolean') {
+      notes.push(isActive ? 'account enabled' : 'account disabled — sessions revoked');
+    }
+    if (typeof email2faEnabled === 'boolean') {
+      notes.push(email2faEnabled ? '2FA enabled' : '2FA disabled');
+    }
+    const statusNote = notes.length ? ` (${notes.join('; ')})` : '';
+
     await createAuditLog({
       userId: req.user?.userId,
       userName: req.user?.username,
       action: AuditAction.USER_UPDATE,
-      details: `Updated user profile for ${updated.username}`,
+      details: `Updated user profile for ${updated.username}${statusNote}`,
       ipAddress: req.ip,
     });
 
