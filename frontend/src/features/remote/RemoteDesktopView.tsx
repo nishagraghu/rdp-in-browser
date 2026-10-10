@@ -32,7 +32,8 @@ import {
   Download,
   Printer,
   Users,
-  X
+  X,
+  WifiOff
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
@@ -46,6 +47,8 @@ import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
 import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
 import { clampConnectionTimeout } from '@rdp/shared';
 import { attachRdpClipboard, type RdpClipboardBridge } from '@/lib/rdpClipboard';
+import { NetworkStatusBadge } from '@/components/NetworkStatusBadge';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 /**
  * Turn guacd/guacamole-lite error text into something a user (or the admin they
@@ -84,7 +87,65 @@ export const RemoteDesktopView: React.FC = () => {
   const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
 
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const connectionStatusRef = useRef(connectionStatus);
+  connectionStatusRef.current = connectionStatus;
+
+  const wasConnectedRef = useRef(false);
+  const needsReconnectRef = useRef(false);
+  const guacRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guacRetryCountRef = useRef(0);
+
+  const reconnectSession = useCallback(() => {
+    if (clientRef.current) {
+      try {
+        clientRef.current.disconnect();
+      } catch {}
+      clientRef.current = null;
+    }
+    setConnectionStatus('connecting');
+    setErrorMessage(null);
+    setSessionAttempt((prev) => prev + 1);
+  }, []);
+
+  const networkStatus = useNetworkStatus({
+    reconnectIntervalMs: 3000,
+    onOnline: () => {
+      // Auto-reconnect remote desktop when internet is restored
+      const shouldReconnect =
+        needsReconnectRef.current ||
+        wasConnectedRef.current ||
+        connectionStatusRef.current !== 'connected';
+
+      if (shouldReconnect) {
+        toast.info('Internet restored. Reconnecting remote session...');
+        if (guacRetryTimerRef.current) {
+          clearTimeout(guacRetryTimerRef.current);
+          guacRetryTimerRef.current = null;
+        }
+        guacRetryCountRef.current = 0;
+        reconnectSession();
+      }
+    },
+    onOffline: () => {
+      toast.warning('Internet connection lost. You are currently offline.');
+      if (connectionStatusRef.current === 'connected' || wasConnectedRef.current) {
+        needsReconnectRef.current = true;
+      }
+      if (guacRetryTimerRef.current) {
+        clearTimeout(guacRetryTimerRef.current);
+        guacRetryTimerRef.current = null;
+      }
+      // Forcefully terminate client so it doesn't linger in broken TCP state
+      try {
+        clientRef.current?.disconnect();
+      } catch {}
+      isConnectedRef.current = false;
+      setConnectionStatus('disconnected');
+    },
+  });
   const [vmInfo, setVmInfo] = useState<{ id: string; name: string; protocol: string; hostname: string } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
@@ -451,9 +512,24 @@ export const RemoteDesktopView: React.FC = () => {
             connectTimeoutId = null;
           }
           console.error('Guacamole client error:', errorState);
+          dispatch(endVmConnection());
+
+          // If session was interrupted by network loss and internet is online, retry up to 5 times
+          if (needsReconnectRef.current || wasConnectedRef.current) {
+            guacRetryCountRef.current += 1;
+            if (guacRetryCountRef.current <= 5) {
+              setConnectionStatus('connecting');
+              setErrorMessage(`Reconnecting remote desktop (attempt ${guacRetryCountRef.current}/5)...`);
+              if (guacRetryTimerRef.current) clearTimeout(guacRetryTimerRef.current);
+              guacRetryTimerRef.current = setTimeout(() => {
+                reconnectSession();
+              }, 2500);
+              return;
+            }
+          }
+
           setErrorMessage(describeGuacError(errorState));
           setConnectionStatus('error');
-          dispatch(endVmConnection());
         };
 
         client.onfile = (stream, mimetype, filename) => {
@@ -524,6 +600,13 @@ export const RemoteDesktopView: React.FC = () => {
                 connectTimeoutId = null;
               }
               isConnectedRef.current = true;
+              wasConnectedRef.current = true;
+              needsReconnectRef.current = false;
+              guacRetryCountRef.current = 0;
+              if (guacRetryTimerRef.current) {
+                clearTimeout(guacRetryTimerRef.current);
+                guacRetryTimerRef.current = null;
+              }
               setConnectionStatus('connected');
               void clipboardBridge?.syncFromLocal();
               setTimeout(() => {
@@ -635,6 +718,10 @@ export const RemoteDesktopView: React.FC = () => {
 
     return () => {
       cancelled = true;
+      if (guacRetryTimerRef.current) {
+        clearTimeout(guacRetryTimerRef.current);
+        guacRetryTimerRef.current = null;
+      }
       setSessionId(null);
       setOtherUsers([]);
       dispatch(endVmConnection());
@@ -665,7 +752,7 @@ export const RemoteDesktopView: React.FC = () => {
         return null;
       });
     };
-  }, [vmId, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
+  }, [vmId, sessionAttempt, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
 
   // Poll who else is connected to this desktop while our session is live.
   useEffect(() => {
@@ -726,7 +813,7 @@ export const RemoteDesktopView: React.FC = () => {
   };
 
   const handleReconnect = () => {
-    window.location.reload();
+    reconnectSession();
   };
 
   const toggleFullscreen = async () => {
@@ -982,11 +1069,23 @@ export const RemoteDesktopView: React.FC = () => {
             </div>
 
             <Badge
-              variant={connectionStatus === 'connected' ? 'default' : 'destructive'}
-              className={connectionStatus === 'connected' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}
+              variant={connectionStatus === 'connected' ? 'default' : connectionStatus === 'connecting' ? 'secondary' : 'destructive'}
+              className={
+                connectionStatus === 'connected'
+                  ? 'bg-emerald-500 hover:bg-emerald-600'
+                  : connectionStatus === 'connecting'
+                  ? 'bg-amber-500 text-white animate-pulse'
+                  : ''
+              }
             >
               {connectionStatus.toUpperCase()}
             </Badge>
+
+            <NetworkStatusBadge
+              status={networkStatus.status}
+              latency={networkStatus.latency}
+              onRetry={networkStatus.checkConnection}
+            />
           </div>
 
           <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
@@ -1156,6 +1255,12 @@ export const RemoteDesktopView: React.FC = () => {
               <p className="text-sm text-destructive max-w-md mx-auto mt-2 font-mono text-xs">
                 {errorMessage || 'Unable to connect to target RDP host via Guacamole.'}
               </p>
+              {networkStatus.isOffline && (
+                <p className="text-xs text-amber-500 font-medium max-w-md mx-auto mt-2 flex items-center justify-center gap-1.5">
+                  <WifiOff className="w-3.5 h-3.5" />
+                  No internet connection. Waiting for network to reconnect...
+                </p>
+              )}
               {/* <p className="text-xs text-muted-foreground max-w-md mx-auto mt-3">
                 Verify the VM username and password in Admin settings. If target account is locked,
                 unlock it on the remote Windows server and try again.
@@ -1182,6 +1287,17 @@ export const RemoteDesktopView: React.FC = () => {
               <p className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
                 The connection to the remote desktop was closed.
               </p>
+              {networkStatus.isOffline ? (
+                <p className="text-xs text-amber-500 font-medium max-w-md mx-auto mt-2 flex items-center justify-center gap-1.5">
+                  <WifiOff className="w-3.5 h-3.5" />
+                  No internet connection. Waiting for network to reconnect...
+                </p>
+              ) : networkStatus.isReconnecting ? (
+                <p className="text-xs text-amber-500 font-medium max-w-md mx-auto mt-2 flex items-center justify-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Reconnecting to network...
+                </p>
+              ) : null}
             </div>
             <div className="flex space-x-3 pt-2">
               <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
