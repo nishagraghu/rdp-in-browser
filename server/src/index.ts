@@ -1,4 +1,5 @@
 import http from 'http';
+import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -7,11 +8,23 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { config } from './config/env';
 
+// Optimize network latency for real-time RDP keystrokes & mouse packets:
+// Disable Nagle's algorithm (TCP_NODELAY) on all outbound TCP connections (including guacd:4822)
+const originalNetConnect = net.connect;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(net as any).connect = function (...args: any[]) {
+  const socket = originalNetConnect.apply(this, args as any);
+  socket.setNoDelay(true);
+  return socket;
+};
+
 interface GuacClientConnection {
   connectionId: number;
   connectionSettings?: { meta?: { sessionId?: string } };
   send(message: string): void;
   close(error?: Error): void;
+  guacdClient?: { guacdConnection?: { setNoDelay(noDelay?: boolean): void } };
+  webSocket?: { _socket?: { setNoDelay(noDelay?: boolean): void } };
 }
 
 interface GuacServer {
@@ -97,7 +110,12 @@ const httpServer = http.createServer(app);
 
 // GuacamoleLite WebSocket bridge
 const guacServer = new GuacamoleLite(
-  { server: httpServer, path: '/ws' },
+  {
+    server: httpServer,
+    path: '/ws',
+    // Disable per-message deflate compression to eliminate buffering delay on tiny keystroke frames
+    perMessageDeflate: false,
+  },
   { host: config.GUACD_HOST, port: config.GUACD_PORT },
   {
     crypt: { cypher: 'AES-256-CBC', key: config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0') },
@@ -112,6 +130,14 @@ function guacInstruction(opcode: string, args: string[]): string {
 // The token issued by /vms/:id/connect carries a top-level `meta` block that
 // guacamole-lite preserves on the decrypted connectionSettings.
 guacServer.on('open', (connection) => {
+  // Ensure TCP_NODELAY is enabled on both sockets for zero keystroke buffering
+  try {
+    connection.guacdClient?.guacdConnection?.setNoDelay(true);
+    connection.webSocket?._socket?.setNoDelay(true);
+  } catch (err) {
+    console.warn('[TCP_NODELAY] Failed to apply setNoDelay:', err);
+  }
+
   const sessionId = connection.connectionSettings?.meta?.sessionId;
   sessionRegistry.bindDisconnect(sessionId, () => {
     try {
