@@ -34,10 +34,15 @@ export function ensureUserDriveDirectory(username: string): string {
   try {
     fs.chownSync(userDir, GUACD_UID, GUACD_GID);
     fs.chownSync(downloadDir, GUACD_UID, GUACD_GID);
-    fs.chmodSync(userDir, 0o775);
-    fs.chmodSync(downloadDir, 0o775);
-  } catch (error) {
-    console.error(`Failed to set drive directory ownership for ${username}:`, error);
+  } catch {
+    // Best effort on non-root / Windows hosts.
+  }
+
+  try {
+    fs.chmodSync(userDir, 0o777);
+    fs.chmodSync(downloadDir, 0o777);
+  } catch {
+    // Best effort.
   }
 
   return userDir;
@@ -77,7 +82,28 @@ export function commonDriveExists(relative: string): boolean {
   }
 }
 
+/** Ensure common drive folder exists and has proper permissions for guacd and users. */
+export function ensureCommonDriveDirectory(relative: string): string {
+  ensureDrivesRoot();
+  const dir = commonDriveAbsolute(relative);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  try {
+    fs.chownSync(dir, GUACD_UID, GUACD_GID);
+  } catch {
+    // Best effort on non-root / Windows hosts.
+  }
+  try {
+    fs.chmodSync(dir, 0o777);
+  } catch {
+    // Best effort.
+  }
+  return dir;
+}
+
 /** Path guacd sees. DRIVES_PATH is mounted at /drives. */
 export function guacDrivePath(relative: string): string {
   return `/drives/${relative}`;
 }
+

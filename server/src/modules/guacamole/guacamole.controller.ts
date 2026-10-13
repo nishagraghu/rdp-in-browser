@@ -6,7 +6,7 @@ import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason } from '../../shared';
 import { config } from '../../config/env';
-import { ensureUserDriveDirectory, guacDrivePath, normalizeCommonDriveRelative } from '../../utils/userDrive';
+import { ensureCommonDriveDirectory, ensureUserDriveDirectory, guacDrivePath, normalizeCommonDriveRelative } from '../../utils/userDrive';
 import * as sessionRegistry from '../sessions/sessionRegistry';
 
 const KEY = Buffer.from(
@@ -276,9 +276,10 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
         });
         return;
       }
-      // Use the folder the admin named. Do not create a per-user folder.
+      // Use the folder the admin named. Ensure directory is created on disk for guacd.
+      ensureCommonDriveDirectory(relative);
       sessionDrivePath = guacDrivePath(relative);
-      sessionCreateDrivePath = false;
+      sessionCreateDrivePath = true;
     } else if (vm.enableDrive && req.user?.username) {
       ensureUserDriveDirectory(req.user.username);
       sessionDrivePath = guacDrivePath(req.user.username);

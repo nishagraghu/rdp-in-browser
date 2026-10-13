@@ -8,6 +8,7 @@ import { UserRole } from '../../shared';
 import {
   commonDriveAbsolute,
   commonDriveExists,
+  ensureCommonDriveDirectory,
   ensureUserDriveDirectory,
   normalizeCommonDriveRelative,
 } from '../../utils/userDrive';
@@ -18,9 +19,13 @@ const GUACD_GID = 1000;
 function chownForGuacd(filePath: string): void {
   try {
     fs.chownSync(filePath, GUACD_UID, GUACD_GID);
-    fs.chmodSync(filePath, 0o664);
   } catch {
-    // Best effort on non-root hosts.
+    // Best effort on non-root / Windows hosts.
+  }
+  try {
+    fs.chmodSync(filePath, 0o666);
+  } catch {
+    // Best effort.
   }
 }
 
@@ -44,7 +49,11 @@ interface ResolvedDrive {
 
 function vmIdFromRequest(req: AuthenticatedRequest): string | undefined {
   const fromQuery = typeof req.query.vmId === 'string' ? req.query.vmId.trim() : '';
-  return fromQuery || undefined;
+  if (fromQuery) return fromQuery;
+  const fromHeader = typeof req.headers['x-vm-id'] === 'string' ? req.headers['x-vm-id'].trim() : '';
+  if (fromHeader) return fromHeader;
+  const fromBody = typeof req.body?.vmId === 'string' ? req.body.vmId.trim() : '';
+  return fromBody || undefined;
 }
 
 function resolveInside(root: string, relativePath: string): string | null {
@@ -105,18 +114,16 @@ function commonDrive(vm: { id: string; drivePath: string | null }): ResolvedDriv
     return { error: 'Common folder path is missing or invalid on this desktop.' };
   }
 
-  const exists = commonDriveExists(relative);
+  // Ensure common shared folder is created and accessible on the host
+  const root = ensureCommonDriveDirectory(relative);
   return {
     mode: 'common',
-    root: commonDriveAbsolute(relative),
+    root,
     label: relative,
     vmId: vm.id,
-    exists,
+    exists: true,
     canDelete: true,
     choices: [],
-    message: exists
-      ? undefined
-      : `Folder "${relative}" is not on the host yet. Create it under the shared drives directory. This app will not create it.`,
   };
 }
 
@@ -226,7 +233,23 @@ const storage = multer.diskStorage({
           cb(new Error(drive.message || 'Shared folder does not exist'), '');
           return;
         }
-        cb(null, drive.root);
+
+        let targetDir = drive.root;
+        const requestedSubfolder =
+          typeof req.query.folder === 'string'
+            ? req.query.folder.trim()
+            : typeof req.headers['x-folder'] === 'string'
+              ? req.headers['x-folder'].trim()
+              : '';
+
+        if (requestedSubfolder) {
+          const safeSubDir = resolveInside(drive.root, requestedSubfolder);
+          if (safeSubDir && fs.existsSync(safeSubDir) && fs.statSync(safeSubDir).isDirectory()) {
+            targetDir = safeSubDir;
+          }
+        }
+
+        cb(null, targetDir);
       })
       .catch(() => cb(new Error('Failed to open shared drive'), ''));
   },
@@ -248,14 +271,64 @@ export async function uploadFile(req: AuthenticatedRequest, res: Response): Prom
     return;
   }
 
+  // 1. Validate that the uploaded file physically exists on the destination drive
+  if (!fs.existsSync(req.file.path)) {
+    res.status(500).json({
+      success: false,
+      error: 'File was not written to target destination',
+    });
+    return;
+  }
+
+  // 2. Measure actual written file size on disk (after upload)
+  const diskStats = fs.statSync(req.file.path);
+  const actualDiskSize = diskStats.size;
+
+  // 3. Resolve client-provided expected size (before upload)
+  const rawExpected = req.body?.expectedSize ?? req.headers['x-expected-file-size'];
+  const expectedSize =
+    rawExpected !== undefined && rawExpected !== ''
+      ? Number(rawExpected)
+      : req.file.size;
+
+  // 4. Validate that before-size and after-size strictly match
+  if (Number.isFinite(expectedSize) && actualDiskSize !== expectedSize) {
+    console.error(
+      `[Upload Size Mismatch] File "${req.file.originalname}": expected ${expectedSize} bytes, but disk size is ${actualDiskSize} bytes. Cleaning up partial file.`
+    );
+
+    // Delete incomplete / corrupted file to prevent corruption
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (cleanupErr) {
+      console.error('[Upload Size Mismatch] Cleanup failed:', cleanupErr);
+    }
+
+    res.status(400).json({
+      success: false,
+      error: `File size verification failed: expected ${expectedSize} bytes, but received ${actualDiskSize} bytes on disk.`,
+      details: {
+        expectedSize,
+        actualDiskSize,
+      },
+    });
+    return;
+  }
+
   chownForGuacd(req.file.path);
+
+  console.log(
+    `[Upload Success] File "${req.file.originalname}" (${actualDiskSize} bytes) verified before and after. Destination: ${req.file.path}`
+  );
 
   res.json({
     success: true,
     data: {
       filename: req.file.originalname,
       path: req.file.originalname,
-      size: req.file.size,
+      size: actualDiskSize,
+      expectedSize,
+      verified: true,
       mimetype: req.file.mimetype,
     },
   });

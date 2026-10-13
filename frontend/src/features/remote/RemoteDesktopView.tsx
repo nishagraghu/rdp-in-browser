@@ -44,7 +44,7 @@ import {
   unlockRdpKeyboard,
 } from '@/lib/rdpKeyboard';
 import { DASHBOARD_SHOW_LIST_STATE } from '@/lib/dashboardNavigation';
-import { SharedDriveDownloadDialog } from '@/components/SharedDriveDownloadDialog';
+import { SharedDriveDownloadDialog, formatDriveSize } from '@/components/SharedDriveDownloadDialog';
 import { clampConnectionTimeout } from '@rdp/shared';
 import { attachRdpClipboard, type RdpClipboardBridge } from '@/lib/rdpClipboard';
 import { NetworkStatusBadge } from '@/components/NetworkStatusBadge';
@@ -153,13 +153,6 @@ export const RemoteDesktopView: React.FC = () => {
   const [printJob, setPrintJob] = useState<{ url: string; filename: string } | null>(null);
   const printFrameRef = useRef<HTMLIFrameElement>(null);
   const [keysMenuOpen, setKeysMenuOpen] = useState(false);
-
-  // ESC long-press tracking state for exiting fullscreen
-  const [escProgress, setEscProgress] = useState(0);
-  const escTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const escIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const escLongPressTriggeredRef = useRef(false);
-  const escStartTimeRef = useRef(0);
 
   // Who else is on this desktop right now (populated by polling /vms/:id/sessions).
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -342,11 +335,6 @@ export const RemoteDesktopView: React.FC = () => {
         setScaleMode('fit');
       } else {
         unlockRdpKeyboard();
-        if (escTimerRef.current) clearTimeout(escTimerRef.current);
-        if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-        setEscProgress(0);
-        escStartTimeRef.current = 0;
-        escLongPressTriggeredRef.current = false;
       }
 
       setTimeout(() => {
@@ -363,7 +351,7 @@ export const RemoteDesktopView: React.FC = () => {
   }, [scaleMode, customScalePercent, applyScale, focusDisplay, updateRemoteDisplaySize]);
 
 
-  // Keyboard shortcut listener & ESC long-press to exit fullscreen
+  // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 1. Upload shortcut: Ctrl + Shift + Alt
@@ -380,44 +368,6 @@ export const RemoteDesktopView: React.FC = () => {
         return;
       }
 
-      // 2. Escape Key: In fullscreen, ONLY long-press (>= 800ms) exits fullscreen
-      if (e.key === 'Escape' && isFullscreen) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (!escStartTimeRef.current && !e.repeat) {
-          escStartTimeRef.current = Date.now();
-          escLongPressTriggeredRef.current = false;
-          const LONG_PRESS_MS = 800;
-
-          if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-          if (escTimerRef.current) clearTimeout(escTimerRef.current);
-
-          escIntervalRef.current = setInterval(() => {
-            const elapsed = Date.now() - escStartTimeRef.current;
-            const pct = Math.min(100, Math.round((elapsed / LONG_PRESS_MS) * 100));
-            setEscProgress(pct);
-          }, 30);
-
-          escTimerRef.current = setTimeout(async () => {
-            escLongPressTriggeredRef.current = true;
-            if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-            setEscProgress(0);
-            escStartTimeRef.current = 0;
-
-            unlockRdpKeyboard();
-            try {
-              if (document.fullscreenElement) {
-                await document.exitFullscreen();
-              }
-            } catch {
-              toast.error('Failed to exit fullscreen mode');
-            }
-          }, LONG_PRESS_MS);
-        }
-        return;
-      }
-
       if (!isFullscreen) return;
 
       if (isBrowserShortcut(e)) {
@@ -425,35 +375,9 @@ export const RemoteDesktopView: React.FC = () => {
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (escTimerRef.current) clearTimeout(escTimerRef.current);
-        if (escIntervalRef.current) clearInterval(escIntervalRef.current);
-        setEscProgress(0);
-        escStartTimeRef.current = 0;
-
-        if (!escLongPressTriggeredRef.current) {
-          // Short press tap: send ESC key to Guacamole RDP session
-          if (clientRef.current) {
-            clientRef.current.sendKeyEvent(1, 0xff1b); // ESC down
-            clientRef.current.sendKeyEvent(0, 0xff1b); // ESC up
-          }
-        }
-        escLongPressTriggeredRef.current = false;
-        return;
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-    window.addEventListener('keyup', handleKeyUp, { capture: true });
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
-      window.removeEventListener('keyup', handleKeyUp, { capture: true });
-      if (escTimerRef.current) clearTimeout(escTimerRef.current);
-      if (escIntervalRef.current) clearInterval(escIntervalRef.current);
     };
   }, [isFullscreen]);
 
@@ -861,34 +785,58 @@ export const RemoteDesktopView: React.FC = () => {
     applyScale('100%', 100);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0 || !clientRef.current) return;
+    if (!files || files.length === 0) return;
     
-    Array.from(files).forEach(file => {
-      const stream = clientRef.current!.createFileStream(file.type || 'application/octet-stream', file.name);
-      const writer = new Guacamole.BlobWriter(stream);
-      
-      toast.info(`Saving ${file.name} to shared drive...`);
+    const fileList = Array.from(files);
+    for (const file of fileList) {
+      const originalSize = file.size;
+      if (originalSize === 0) {
+        toast.error(`Cannot upload "${file.name}": file is empty (0 bytes).`);
+        continue;
+      }
 
-      writer.oncomplete = () => {
-        stream.sendEnd();
-        toast.success(`${file.name} is on the shared drive (visible on host folder too).`);
-      };
-      
-      writer.onerror = () => {
-        console.error(`Failed to upload ${file.name}`);
-        stream.sendEnd();
-        toast.error(`Failed to save ${file.name} to shared drive`);
-      };
-      
-      writer.sendBlob(file);
-    });
+      if (originalSize > 50 * 1024 * 1024) {
+        toast.error(`"${file.name}" exceeds 50MB limit.`);
+        continue;
+      }
+
+      const toastId = toast.loading(`Uploading "${file.name}" (${formatDriveSize(originalSize)}) to shared drive...`);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('expectedSize', String(originalSize));
+
+        const res = await api.post('/files/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'X-Expected-File-Size': String(originalSize),
+            ...(vmId ? { 'X-VM-ID': vmId } : {}),
+          },
+          params: vmId ? { vmId } : undefined,
+        });
+
+        const uploadedSize = res.data?.data?.size ?? originalSize;
+        if (uploadedSize !== originalSize) {
+          throw new Error(`Size mismatch: sent ${originalSize} bytes, but disk size is ${uploadedSize} bytes.`);
+        }
+
+        console.log(`[Upload Verified] ${file.name} uploaded to shared drive: ${uploadedSize} bytes matched.`);
+        toast.success(`"${file.name}" (${formatDriveSize(uploadedSize)}) saved to shared drive!`, { id: toastId });
+      } catch (err: any) {
+        console.error(`Failed to upload ${file.name}`, err);
+        const errorMsg = err.response?.data?.error || err.message || 'Failed to save file to shared drive.';
+        toast.error(`Upload failed for "${file.name}": ${errorMsg}`, { id: toastId });
+      }
+    }
     
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
+
 
   const sendSpecialKey = (combination: string) => {
     const client = clientRef.current;
@@ -1028,18 +976,6 @@ export const RemoteDesktopView: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {escProgress > 0 && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background/95 border border-primary/40 px-4 py-2 rounded-full shadow-2xl backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2">
-          <span className="text-xs font-semibold text-primary">Hold ESC to exit full screen...</span>
-          <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-75"
-              style={{ width: `${escProgress}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Session navigation toolbar — always shown at the top irrespective of fullscreen */}
       {!isConnecting && (

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, File as FileIcon, Folder, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Download, File as FileIcon, Folder, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -115,13 +115,18 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
   const [listing, setListing] = useState<DriveListing | null>(null);
   const [entries, setEntries] = useState<DriveEntry[]>([]);
   const [selectedVmId, setSelectedVmId] = useState<string | undefined>(vmId);
+  const [currentPath, setCurrentPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
-  const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedVmId(vmId);
   }, [vmId]);
+
+  // Reset folder navigation when opening or switching shared folder
+  useEffect(() => {
+    setCurrentPath('');
+  }, [open, selectedVmId, vmId]);
 
   const activeVmId = selectedVmId || vmId;
 
@@ -162,28 +167,32 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
     }
   };
 
-  const handleDelete = async (entry: DriveEntry) => {
-    const target = activeVmId || listing?.vmId;
-    const shared = listing?.mode === 'common';
-    const prompt = shared
-      ? `Remove "${entry.name}" from the common folder? Everyone who uses this desktop will lose it.`
-      : `Remove "${entry.name}" from your shared drive?`;
-    if (!window.confirm(prompt)) return;
+  const normalizePath = (p: string) => p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
 
-    setDeletingPath(entry.path);
-    try {
-      await deleteSharedDriveEntry(entry.path, target);
-      toast.success(`${entry.name} removed`);
-      await loadFiles();
-    } catch (err) {
-      console.error('Delete failed', err);
-      toast.error(`Failed to remove ${entry.name}`);
-    } finally {
-      setDeletingPath(null);
-    }
+  const getParentPath = (pathStr: string) => {
+    const clean = normalizePath(pathStr);
+    const parts = clean.split('/');
+    parts.pop();
+    return parts.join('/');
   };
 
+  // Only show files and folders that directly reside in currentPath
+  const currentFolderEntries = entries.filter((entry) => {
+    const cleanEntry = normalizePath(entry.path);
+    const cleanCurrent = normalizePath(currentPath);
+    if (!cleanCurrent) {
+      return !cleanEntry.includes('/');
+    }
+    if (!cleanEntry.startsWith(cleanCurrent + '/')) return false;
+    const remainder = cleanEntry.slice(cleanCurrent.length + 1);
+    return !remainder.includes('/');
+  });
+
   const filesOnly = entries.filter((e) => !e.isDirectory);
+  const currentFiles = currentFolderEntries.filter((e) => !e.isDirectory);
+  const currentFolders = currentFolderEntries.filter((e) => e.isDirectory);
+  const breadcrumbs = currentPath ? normalizePath(currentPath).split('/') : [];
+
   const folderLabel = listing?.mode === 'common'
     ? `Common folder${listing.label ? ` (${listing.label})` : ''}`
     : listing?.mode === 'choose'
@@ -196,8 +205,7 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
         <DialogHeader>
           <DialogTitle>Download from Shared Drive</DialogTitle>
           <DialogDescription>
-            {folderLabel}. Click download to save a copy to this computer.
-            {listing?.canDelete ? ' Remove deletes the file from the shared folder.' : ''}
+            {folderLabel}. Double-click folders to open them and view files inside.
           </DialogDescription>
         </DialogHeader>
 
@@ -208,7 +216,10 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
               <select
                 className="h-8 rounded-md border bg-background px-2 text-sm"
                 value={selectedVmId || ''}
-                onChange={(e) => setSelectedVmId(e.target.value || undefined)}
+                onChange={(e) => {
+                  setSelectedVmId(e.target.value || undefined);
+                  setCurrentPath('');
+                }}
               >
                 <option value="">Select a folder</option>
                 {listing.choices.map((choice) => (
@@ -219,20 +230,69 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
               </select>
             </label>
           )}
+
           {listing?.message && (
             <p className="text-xs text-muted-foreground">{listing.message}</p>
           )}
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={loadFiles}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+
+          {/* Breadcrumb Navigation Bar */}
+          <div className="flex items-center justify-between gap-2 text-xs bg-muted/40 p-2 rounded-md border">
+            <div className="flex items-center gap-1 overflow-x-auto min-w-0 flex-1">
+              <Button
+                variant={currentPath ? 'ghost' : 'secondary'}
+                size="sm"
+                className="h-7 px-2 text-xs gap-1.5 font-medium shrink-0"
+                onClick={() => setCurrentPath('')}
+              >
+                <Folder className="h-3.5 w-3.5 text-primary" />
+                <span>Shared Drive</span>
+              </Button>
+              {breadcrumbs.map((segment, index) => {
+                const subPath = breadcrumbs.slice(0, index + 1).join('/');
+                const isLast = index === breadcrumbs.length - 1;
+                return (
+                  <React.Fragment key={subPath}>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <Button
+                      variant={isLast ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={`h-7 px-2 text-xs truncate max-w-[140px] shrink-0 ${
+                        isLast ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                      }`}
+                      onClick={() => !isLast && setCurrentPath(subPath)}
+                      title={segment}
+                    >
+                      {segment}
+                    </Button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {currentPath && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1"
+                  onClick={() => setCurrentPath(getParentPath(currentPath))}
+                  title="Go to parent folder"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  <span>Back</span>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={loadFiles}
+                disabled={isLoading}
+                title="Refresh files"
+              >
+                <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
 
           <div className="border rounded-md overflow-hidden max-h-[360px] overflow-y-auto">
@@ -240,20 +300,68 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
               <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
                 <RefreshCw className="h-4 w-4 animate-spin" /> Loading files...
               </div>
-            ) : entries.length === 0 ? (
+            ) : currentFolderEntries.length === 0 && !currentPath ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 {listing?.missing
                   ? listing.message
                   : 'No files on the shared drive yet. Upload or copy files into the shared drive first.'}
               </div>
+            ) : currentFolderEntries.length === 0 && currentPath ? (
+              <div className="p-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                <Folder className="h-8 w-8 text-muted-foreground/40" />
+                <p>This folder is empty.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 mt-1"
+                  onClick={() => setCurrentPath(getParentPath(currentPath))}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Go back
+                </Button>
+              </div>
             ) : (
               <ul className="divide-y">
-                {entries.map((entry) => (
+                {currentPath && (
+                  <li
+                    className="flex items-center justify-between gap-2 p-2.5 hover:bg-muted/50 transition-colors cursor-pointer select-none bg-muted/20"
+                    onDoubleClick={() => setCurrentPath(getParentPath(currentPath))}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="bg-primary/10 p-2 rounded-md shrink-0">
+                        <Folder className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">..</span>
+                        <span className="text-xs text-muted-foreground">Up to parent folder (Double-click)</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setCurrentPath(getParentPath(currentPath))}
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Up
+                    </Button>
+                  </li>
+                )}
+
+                {currentFolderEntries.map((entry) => (
                   <li
                     key={entry.path}
-                    className="flex items-center justify-between gap-2 p-3 hover:bg-muted/50 transition-colors"
+                    className={`flex items-center justify-between gap-2 p-3 hover:bg-muted/50 transition-colors select-none ${
+                      entry.isDirectory ? 'cursor-pointer hover:bg-primary/5' : ''
+                    }`}
+                    onDoubleClick={() => {
+                      if (entry.isDirectory) {
+                        setCurrentPath(entry.path);
+                      } else {
+                        handleDownload(entry);
+                      }
+                    }}
                   >
-                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                    <div className="flex items-center gap-3 overflow-hidden min-w-0 flex-1">
                       <div className="bg-primary/10 p-2 rounded-md shrink-0">
                         {entry.isDirectory ? (
                           <Folder className="h-4 w-4 text-primary" />
@@ -262,18 +370,29 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
                         )}
                       </div>
                       <div className="flex flex-col overflow-hidden min-w-0">
-                        <span className="text-sm font-medium truncate" title={entry.path}>
-                          {entry.path}
+                        <span className="text-sm font-medium truncate" title={entry.name}>
+                          {entry.name}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {entry.isDirectory
-                            ? 'Folder'
+                            ? 'Folder • Double-click to open'
                             : `${formatDriveSize(entry.size)} • ${new Date(entry.modifiedAt).toLocaleString()}`}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {!entry.isDirectory && (
+                      {entry.isDirectory ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 h-8 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setCurrentPath(entry.path)}
+                          title="Open folder"
+                        >
+                          <span>Open</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : (
                         <Button
                           variant="outline"
                           size="sm"
@@ -290,22 +409,6 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
                           <span className="hidden sm:inline">Download</span>
                         </Button>
                       )}
-                      {listing?.canDelete && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          disabled={deletingPath === entry.path}
-                          onClick={() => handleDelete(entry)}
-                          title={`Remove ${entry.name}`}
-                        >
-                          {deletingPath === entry.path ? (
-                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      )}
                     </div>
                   </li>
                 ))}
@@ -313,11 +416,18 @@ export const SharedDriveDownloadDialog: React.FC<SharedDriveDownloadDialogProps>
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            {filesOnly.length} downloadable file{filesOnly.length === 1 ? '' : 's'}
-          </p>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {currentFolders.length > 0 && `${currentFolders.length} folder${currentFolders.length === 1 ? '' : 's'}, `}
+              {currentFiles.length} file{currentFiles.length === 1 ? '' : 's'} in this view
+            </span>
+            <span>
+              {filesOnly.length} total file{filesOnly.length === 1 ? '' : 's'}
+            </span>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 };
+
