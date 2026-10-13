@@ -1,0 +1,71 @@
+# rdp-in-browser — Customer deployment (pre-built images only, no source code required)
+# Start: docker compose up -d
+
+name: rdp-in-browser
+
+services:
+  guacd:
+    image: guacamole/guacd:1.5.5
+    container_name: rdp-guacd
+    restart: unless-stopped
+    environment:
+      GUACD_LOG_LEVEL: info
+    volumes:
+      - ${DRIVES_PATH:-D:/rdp_shared}:/drives
+    networks:
+      - internal
+
+  server:
+    image: ${BACKEND_IMAGE:-ghcr.io/atvriders/rdp-in-browser-server:prod}
+    container_name: rdp-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/app.db}
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+    volumes:
+      # SQLite DB + app data (Docker named volume)
+      - server-data:/app/data
+      # Shared drive files (host folder, same as guacd)
+      - ${DRIVES_PATH:-D:/rdp_shared}:/app/drives
+    depends_on:
+      guacd:
+        condition: service_started
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/atvriders/rdp-in-browser-frontend:prod}
+    container_name: rdp-frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  server-data:
+    name: rdp-server-data

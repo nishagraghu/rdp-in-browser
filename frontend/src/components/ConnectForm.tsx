@@ -265,44 +265,34 @@ export default function ConnectForm({ onConnect }: Props) {
                       {formik.values.enablePrinting && (
                         <div className="pl-6">
                           <Label htmlFor="printerName" className="text-xs">Redirected printer name</Label>
-                          <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
+                          <Input id="printerName" name="printerName" value={formik.values.printerName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Cloudgoo PDF" className="h-7 text-xs mt-1" />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Print jobs download as PDF and open the print dialog on this computer.
+                          </p>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Drive */}
+                  {/* Shared Drive */}
                   <div className="space-y-2 pt-2 border-t border-border">
-                    <Label className="text-xs font-semibold">Drive</Label>
+                    <Label className="text-xs font-semibold">Shared Drive</Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Uses the host shared folder per username. No separate browser download.
+                    </p>
                     <div className="flex items-center space-x-2">
                        <Checkbox id="enableDrive" checked={formik.values.enableDrive} onCheckedChange={c => formik.setFieldValue('enableDrive', Boolean(c))} />
-                       <label htmlFor="enableDrive" className="text-xs font-medium leading-none">Enable drive redirection</label>
+                       <label htmlFor="enableDrive" className="text-xs font-medium leading-none">Enable shared drive</label>
                     </div>
                     {formik.values.enableDrive && (
                       <div className="pl-6 space-y-3 mt-2">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="driveName" className="text-xs">Drive name</Label>
-                            <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
-                          </div>
-                          <div>
-                            <Label htmlFor="drivePath" className="text-xs">Drive path</Label>
-                            <Input id="drivePath" name="drivePath" value={formik.values.drivePath} onChange={formik.handleChange} onBlur={formik.handleBlur} className="h-7 text-xs mt-1" />
-                          </div>
+                        <div>
+                          <Label htmlFor="driveName" className="text-xs">Drive name</Label>
+                          <Input id="driveName" name="driveName" value={formik.values.driveName} onChange={formik.handleChange} onBlur={formik.handleBlur} placeholder="Shared Drive" className="h-7 text-xs mt-1" />
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox id="disableFileDownload" checked={formik.values.disableFileDownload} onCheckedChange={c => formik.setFieldValue('disableFileDownload', Boolean(c))} />
-                            <Label htmlFor="disableFileDownload" className="font-normal text-xs">Disable file download</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', Boolean(c))} />
-                            <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable file upload</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Checkbox id="createDrivePath" checked={formik.values.createDrivePath} onCheckedChange={c => formik.setFieldValue('createDrivePath', Boolean(c))} />
-                            <Label htmlFor="createDrivePath" className="font-normal text-xs">Auto create drive path</Label>
-                          </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox id="disableFileUpload" checked={formik.values.disableFileUpload} onCheckedChange={c => formik.setFieldValue('disableFileUpload', Boolean(c))} />
+                          <Label htmlFor="disableFileUpload" className="font-normal text-xs">Disable browser upload</Label>
                         </div>
                       </div>
                     )}

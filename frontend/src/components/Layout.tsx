@@ -10,7 +10,9 @@ import {
   User as UserIcon, 
   LayoutDashboard, 
   SlidersHorizontal,
-  ChevronUp
+  ChevronUp,
+  Settings2,
+  ClipboardList,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,8 @@ export const Layout: React.FC = () => {
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'VM Management', path: '/admin/vms', icon: Monitor },
     { name: 'Assignments Matrix', path: '/admin/assignments', icon: SlidersHorizontal },
+    { name: 'Audit Report', path: '/admin/audit', icon: ClipboardList },
+    { name: 'Admin Configuration', path: '/admin/configuration', icon: Settings2 },
     { name: 'User View', path: '/dashboard', icon: Monitor },
     { name: 'Profile', path: '/profile', icon: UserIcon },
   ];
@@ -57,7 +61,7 @@ export const Layout: React.FC = () => {
               <div className="h-6 w-6 bg-primary/10 text-primary rounded-md flex items-center justify-center">
                 <Monitor className="h-4 w-4" />
               </div>
-              <span className="">GuacRDP</span>
+              {/* <span className="">GuacRDP</span> */}
             </Link>
           </div>
 
@@ -126,7 +130,7 @@ export const Layout: React.FC = () => {
         <header className="flex h-14 items-center justify-between md:justify-end gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
           <Link to="/" className="flex items-center gap-2 font-semibold md:hidden">
             <Monitor className="h-5 w-5 text-primary" />
-            <span className="">GuacRDP</span>
+            {/* <span className="">GuacRDP</span> */}
           </Link>
           <div className="flex items-center gap-4 ml-auto">
             <FileManager />

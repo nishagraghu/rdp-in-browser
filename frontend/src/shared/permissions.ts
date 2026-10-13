@@ -12,6 +12,8 @@ export const Permission = {
   VM_VIEW: 'VM_VIEW',
   VM_CONNECT: 'VM_CONNECT',
   VM_ASSIGN_USER: 'VM_ASSIGN_USER',
+  SESSION_VIEW: 'SESSION_VIEW',
+  SESSION_TERMINATE: 'SESSION_TERMINATE',
 } as const;
 
 export type PermissionType = typeof Permission[keyof typeof Permission];
@@ -29,6 +31,8 @@ export const RolePermissions: Record<UserRole, PermissionType[]> = {
     Permission.VM_VIEW,
     Permission.VM_CONNECT,
     Permission.VM_ASSIGN_USER,
+    Permission.SESSION_VIEW,
+    Permission.SESSION_TERMINATE,
   ],
   [UserRole.USER]: [
     Permission.VM_VIEW,

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../db/prisma';
 import { verifyAccessToken, TokenPayload } from '../utils/jwt';
 import { hasPermission, PermissionType, UserRole } from '../shared';
 
@@ -6,7 +7,11 @@ export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
 }
 
-export function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function authenticateJWT(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   const authHeader = req.headers.authorization;
   let token: string | undefined;
 
@@ -23,7 +28,29 @@ export function authenticateJWT(req: AuthenticatedRequest, res: Response, next: 
 
   try {
     const payload = verifyAccessToken(token);
-    req.user = payload;
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, username: true, role: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      if (user && !user.isActive) {
+        await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+      }
+      res.status(401).json({
+        success: false,
+        error: 'Account is disabled. Please contact an administrator.',
+        code: 'ACCOUNT_DISABLED',
+      });
+      return;
+    }
+
+    req.user = {
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+    };
     next();
   } catch {
     res.status(401).json({ success: false, error: 'Invalid or expired access token' });
@@ -58,4 +85,3 @@ export function requirePermission(permission: PermissionType) {
     next();
   };
 }
-

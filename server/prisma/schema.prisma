@@ -9,18 +9,20 @@ datasource db {
 }
 
 model User {
-  id           String             @id @default(uuid())
-  name         String
-  email        String             @unique
-  username     String             @unique
-  passwordHash String
-  role         String             @default("USER")
-  isActive     Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  assignments  VMUserAssignment[]
-  refreshTokens RefreshToken[]
-  auditLogs    AuditLog[]
+  id              String             @id @default(uuid())
+  name            String
+  email           String             @unique
+  username        String             @unique
+  passwordHash    String
+  role            String             @default("USER")
+  isActive        Boolean            @default(true)
+  email2faEnabled Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  assignments     VMUserAssignment[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  twoFactorCodes  TwoFactorCode[]
 }
 
 model VM {
@@ -30,6 +32,11 @@ model VM {
   protocol          String             @default("RDP")
   hostname          String
   port              Int                @default(3389)
+  // Seconds to wait for the RDP handshake before failing the session
+  connectionTimeout Int                @default(15)
+  // Concurrent session limits. 0 = unlimited.
+  maxConnections        Int            @default(0)
+  maxConnectionsPerUser Int            @default(0)
   username          String
   encryptedPassword String
   domain            String?
@@ -38,13 +45,20 @@ model VM {
   updatedAt         DateTime           @updatedAt
   assignments       VMUserAssignment[]
 
+  // Access schedule (Guacamole-style restrictions)
+  // Times stored as "HH:mm" (24h); dates as "YYYY-MM-DD". Empty/null = no restriction.
+  allowAccessAfter      String?
+  doNotAllowAccessAfter String?
+  enableAccountAfter    String?
+  disableAccountAfter   String?
+
   // Device Redirection (Audio)
   supportAudioInConsole Boolean @default(false)
   disableAudio          Boolean @default(false)
   enableAudioInput      Boolean @default(false)
 
-  // Device Redirection (Printing)
-  enablePrinting        Boolean @default(false)
+  // Device Redirection (Printing) — print jobs are PDF'd and sent to the browser user's local printers
+  enablePrinting        Boolean @default(true)
   printerName           String?
 
   // Device Redirection (Drive)
@@ -54,9 +68,37 @@ model VM {
   disableFileUpload     Boolean @default(false)
   drivePath             String?
   createDrivePath       Boolean @default(false)
+  // One existing host folder shared by every user. The app does not create it.
+  commonDrive           Boolean @default(false)
   
   // Channels
   staticChannelNames    String?
+
+  // Clipboard (Guacamole)
+  normalizeClipboard    String  @default("preserve") // preserve | unix | windows
+  disableCopy           Boolean @default(false)
+  disablePaste          Boolean @default(false)
+
+  // Display (Guacamole RDP)
+  displayWidth          Int?
+  displayHeight         Int?
+  dpi                   Int?
+  colorDepth            Int      @default(32)
+  forceLossless         Boolean  @default(false)
+  resizeMethod          String   @default("display-update")
+  readOnly              Boolean  @default(false)
+
+  // Performance (Guacamole RDP)
+  enableWallpaper           Boolean @default(false)
+  enableTheming             Boolean @default(false)
+  enableFontSmoothing       Boolean @default(true)
+  enableFullWindowDrag      Boolean @default(false)
+  enableDesktopComposition  Boolean @default(false)
+  enableMenuAnimations      Boolean @default(false)
+  disableBitmapCaching      Boolean @default(false)
+  disableOffscreenCaching   Boolean @default(false)
+  disableGlyphCaching       Boolean @default(false)
+  disableGfx                Boolean @default(false)
 }
 
 model VMUserAssignment {
@@ -91,4 +133,40 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+/// Singleton-style app branding + SMTP settings (id is always "default").
+model AppSettings {
+  id               String   @id @default("default")
+  logoFileName     String?
+  logoOriginalName String?
+  logoMimeType     String?
+  logoPath         String?
+
+  // SMTP configuration (password stored encrypted)
+  smtpHost              String?
+  smtpPort              Int?
+  smtpUsername          String?
+  smtpPasswordEncrypted String?
+  smtpEncryption        String?  // none | starttls | ssl
+  smtpFromEmail         String?
+  smtpFromName          String?
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+/// Short-lived email OTP codes for two-factor authentication.
+model TwoFactorCode {
+  id           String   @id @default(uuid())
+  userId       String
+  codeHash     String
+  challengeToken String @unique
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

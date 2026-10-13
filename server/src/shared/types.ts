@@ -7,11 +7,33 @@ export interface UserDto {
   username: string;
   role: UserRole;
   isActive: boolean;
+  email2faEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   _count?: {
     assignments: number;
   };
+}
+
+export type SmtpEncryption = 'none' | 'starttls' | 'ssl';
+
+export interface SmtpSettingsDto {
+  configured: boolean;
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  hasPassword: boolean;
+  encryption: SmtpEncryption | null;
+  fromEmail: string | null;
+  fromName: string | null;
+  updatedAt: string;
+}
+
+export interface TwoFactorChallengeData {
+  requires2FA: true;
+  challengeToken: string;
+  emailHint: string;
+  expiresInSeconds: number;
 }
 
 export interface VmDto {
@@ -21,11 +43,21 @@ export interface VmDto {
   protocol: VmProtocol;
   hostname: string;
   port: number;
+  connectionTimeout?: number;
+  // Concurrent session limits; 0 = unlimited
+  maxConnections?: number;
+  maxConnectionsPerUser?: number;
   username: string;
   domain?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+
+  // Access schedule (times "HH:mm", dates "YYYY-MM-DD")
+  allowAccessAfter?: string | null;
+  doNotAllowAccessAfter?: string | null;
+  enableAccountAfter?: string | null;
+  disableAccountAfter?: string | null;
   
   // Device Redirection
   supportAudioInConsole?: boolean;
@@ -39,7 +71,34 @@ export interface VmDto {
   disableFileUpload?: boolean;
   drivePath?: string | null;
   createDrivePath?: boolean;
+  commonDrive?: boolean;
   staticChannelNames?: string | null;
+
+  // Clipboard (Guacamole)
+  normalizeClipboard?: string;
+  disableCopy?: boolean;
+  disablePaste?: boolean;
+
+  // Display (Guacamole RDP)
+  displayWidth?: number | null;
+  displayHeight?: number | null;
+  dpi?: number | null;
+  colorDepth?: number;
+  forceLossless?: boolean;
+  resizeMethod?: string;
+  readOnly?: boolean;
+
+  // Performance (Guacamole RDP)
+  enableWallpaper?: boolean;
+  enableTheming?: boolean;
+  enableFontSmoothing?: boolean;
+  enableFullWindowDrag?: boolean;
+  enableDesktopComposition?: boolean;
+  enableMenuAnimations?: boolean;
+  disableBitmapCaching?: boolean;
+  disableOffscreenCaching?: boolean;
+  disableGlyphCaching?: boolean;
+  disableGfx?: boolean;
 
   assignedUsers?: UserDto[];
   _count?: {
@@ -78,8 +137,12 @@ export interface AuthTokens {
 }
 
 export interface LoginResponseData {
-  user: UserDto;
-  accessToken: string;
+  user?: UserDto;
+  accessToken?: string;
+  requires2FA?: boolean;
+  challengeToken?: string;
+  emailHint?: string;
+  expiresInSeconds?: number;
 }
 
 export interface ConnectSessionResponse {
@@ -90,5 +153,6 @@ export interface ConnectSessionResponse {
     name: string;
     protocol: VmProtocol;
     hostname: string;
+    connectionTimeout?: number;
   };
 }
