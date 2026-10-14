@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { decryptVMPassword } from '../../utils/encryption';
 import { createAuditLog } from '../../utils/auditLogger';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason } from '../../shared';
+import { UserRole, AuditAction, clampConnectionTimeout, getVmAccessBlockReason, DEFAULT_TIMEZONE } from '../../shared';
 import { config } from '../../config/env';
 import { ensureCommonDriveDirectory, ensureUserDriveDirectory, guacDrivePath, normalizeCommonDriveRelative } from '../../utils/userDrive';
 import * as sessionRegistry from '../sessions/sessionRegistry';
@@ -55,6 +55,7 @@ function makeGuacamoleToken(params: {
   normalizeClipboard?: string | null;
   disableCopy?: boolean;
   disablePaste?: boolean;
+  timezone?: string | null;
   meta?: sessionRegistry.SessionMeta;
 }): string {
   const settings: Record<string, string> = {
@@ -117,6 +118,7 @@ function makeGuacamoleToken(params: {
   }
   setFlag(settings, 'disable-copy', params.disableCopy);
   setFlag(settings, 'disable-paste', params.disablePaste);
+  settings['timezone'] = params.timezone || DEFAULT_TIMEZONE;
 
   // `meta` is read back server-side from the decrypted token on the guacamole-lite
   // open/close events; guacd never sees it (only `connection` is forwarded).
@@ -233,6 +235,7 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       doNotAllowAccessAfter: vm.doNotAllowAccessAfter,
       enableAccountAfter: vm.enableAccountAfter,
       disableAccountAfter: vm.disableAccountAfter,
+      timezone: vm.timezone || DEFAULT_TIMEZONE,
     });
     if (accessBlock) {
       await createAuditLog({
@@ -366,6 +369,7 @@ export async function connectVmSession(req: AuthenticatedRequest, res: Response)
       normalizeClipboard: vm.normalizeClipboard,
       disableCopy: vm.disableCopy,
       disablePaste: vm.disablePaste,
+      timezone: vm.timezone || DEFAULT_TIMEZONE,
     });
 
     await createAuditLog({

@@ -61,16 +61,32 @@ export function normalizeAccessDate(value: unknown): string | null {
   return trimmed;
 }
 
+/** Normalize optional IANA timezone string; empty/invalid → null. */
+export function normalizeTimezone(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: trimmed });
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10));
   return h * 60 + m;
 }
+
+export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
 export interface VmAccessSchedule {
   allowAccessAfter?: string | null;
   doNotAllowAccessAfter?: string | null;
   enableAccountAfter?: string | null;
   disableAccountAfter?: string | null;
+  timezone?: string | null;
 }
 
 /**
@@ -86,9 +102,43 @@ export function getVmAccessBlockReason(
   const allowAfter = normalizeAccessTime(schedule.allowAccessAfter);
   const denyAfter = normalizeAccessTime(schedule.doNotAllowAccessAfter);
 
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
+  if (!enableAfter && !disableAfter && !allowAfter && !denyAfter) {
+    return null;
+  }
+
+  const timezone = normalizeTimezone(schedule.timezone) || DEFAULT_TIMEZONE;
+
+  let yyyy: number;
+  let mm: string;
+  let dd: string;
+  let currentMins: number;
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    yyyy = parseInt(getPart('year'), 10);
+    mm = getPart('month').padStart(2, '0');
+    dd = getPart('day').padStart(2, '0');
+    let hour = parseInt(getPart('hour'), 10);
+    if (hour === 24) hour = 0;
+    const min = parseInt(getPart('minute'), 10);
+    currentMins = hour * 60 + min;
+  } catch {
+    yyyy = now.getFullYear();
+    mm = String(now.getMonth() + 1).padStart(2, '0');
+    dd = String(now.getDate()).padStart(2, '0');
+    currentMins = now.getHours() * 60 + now.getMinutes();
+  }
+
   const today = `${yyyy}-${mm}-${dd}`;
 
   if (enableAfter && today < enableAfter) {
@@ -99,8 +149,6 @@ export function getVmAccessBlockReason(
   }
 
   if (allowAfter || denyAfter) {
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-
     if (allowAfter && denyAfter) {
       const start = timeToMinutes(allowAfter);
       const end = timeToMinutes(denyAfter);

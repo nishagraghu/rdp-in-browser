@@ -51,6 +51,7 @@ model VM {
   doNotAllowAccessAfter String?
   enableAccountAfter    String?
   disableAccountAfter   String?
+  timezone              String?
 
   // Device Redirection (Audio)
   supportAudioInConsole Boolean @default(false)

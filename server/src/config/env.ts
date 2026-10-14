@@ -39,7 +39,7 @@ export const config = {
     process.env.JWT_REFRESH_SECRET,
     'rdp-refresh-token-secret-key-32chars',
   ),
-  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '1d',
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   VM_ENCRYPTION_KEY: vmEncryptionKey,
   GUACAMOLE_ENCRYPTION_KEY: process.env.ENCRYPTION_KEY?.trim() || vmEncryptionKey,

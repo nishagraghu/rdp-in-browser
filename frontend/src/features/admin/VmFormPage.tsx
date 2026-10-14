@@ -5,7 +5,7 @@ import { useFormik } from 'formik';
 import * as yup from 'yup';
 import { toast } from 'sonner';
 import {
-  AlertCircle, ArrowLeft, Eye, EyeOff, Globe, Lock, Server, UserCheck, Users,
+  AlertCircle, ArrowLeft, Eye, EyeOff, Globe, Lock, RotateCcw, Server, UserCheck, Users,
 } from 'lucide-react';
 import { AppDispatch, RootState } from '../../store';
 import { fetchVms, fetchVmById, createVm, updateVm } from '../../store/vmSlice';
@@ -15,6 +15,7 @@ import {
   VmDto, VmProtocol, UserDto,
   DEFAULT_CONNECTION_TIMEOUT_SEC, MIN_CONNECTION_TIMEOUT_SEC, MAX_CONNECTION_TIMEOUT_SEC,
   MAX_CONNECTION_LIMIT, clampConnectionTimeout, clampConnectionLimit,
+  DEFAULT_TIMEZONE,
 } from '@rdp/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,85 @@ const getDefaultPort = (protocol: VmProtocol): string => {
 
 const digitsOnly = (value: string) => value.replace(/[^0-9]/g, '');
 
+interface TimezoneOption {
+  value: string;
+  label: string;
+  offsetMinutes: number;
+}
+
+const buildTimezoneOptions = (): { value: string; label: string }[] => {
+  const intlObj = typeof Intl !== 'undefined' ? (Intl as unknown as { supportedValuesOf?: (type: string) => string[] }) : null;
+  const rawSupported =
+    typeof intlObj?.supportedValuesOf === 'function'
+      ? intlObj.supportedValuesOf('timeZone')
+      : [
+          'UTC',
+          'America/New_York',
+          'America/Chicago',
+          'America/Denver',
+          'America/Los_Angeles',
+          'America/Sao_Paulo',
+          'Europe/London',
+          'Europe/Paris',
+          'Europe/Berlin',
+          'Asia/Dubai',
+          'Asia/Kolkata',
+          'Asia/Singapore',
+          'Asia/Tokyo',
+          'Asia/Shanghai',
+          'Australia/Sydney',
+        ];
+
+  const supported = rawSupported.includes('Asia/Kolkata')
+    ? rawSupported
+    : ['Asia/Kolkata', ...rawSupported];
+
+  const now = new Date();
+  const list: TimezoneOption[] = [];
+
+  for (const tz of supported) {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        timeZoneName: 'shortOffset',
+      });
+      const parts = formatter.formatToParts(now);
+      const offsetStr = parts.find((p) => p.type === 'timeZoneName')?.value || 'GMT';
+
+      let offsetMinutes = 0;
+      const match = offsetStr.match(/GMT([+-])(\d+)(?::(\d+))?/);
+      if (match) {
+        const sign = match[1] === '-' ? -1 : 1;
+        const hours = parseInt(match[2], 10);
+        const mins = match[3] ? parseInt(match[3], 10) : 0;
+        offsetMinutes = sign * (hours * 60 + mins);
+      }
+
+      let label = `(${offsetStr}) ${tz.replace(/_/g, ' ')}`;
+      if (tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta') {
+        label = `(${offsetStr}) Asia/Kolkata (Mumbai, India)`;
+      }
+
+      list.push({
+        value: tz,
+        label,
+        offsetMinutes,
+      });
+    } catch {
+      list.push({
+        value: tz,
+        label: tz === 'Asia/Kolkata' ? '(GMT+5:30) Asia/Kolkata (Mumbai, India)' : tz,
+        offsetMinutes: tz === 'Asia/Kolkata' ? 330 : 0,
+      });
+    }
+  }
+
+  list.sort((a, b) => a.offsetMinutes - b.offsetMinutes || a.value.localeCompare(b.value));
+  return list.map(({ value, label }) => ({ value, label }));
+};
+
+const TIMEZONE_OPTIONS = buildTimezoneOptions();
+
 const emptyValues = {
   name: '',
   description: '',
@@ -55,6 +135,7 @@ const emptyValues = {
   doNotAllowAccessAfter: '',
   enableAccountAfter: '',
   disableAccountAfter: '',
+  timezone: DEFAULT_TIMEZONE,
   supportAudioInConsole: false,
   disableAudio: false,
   enableAudioInput: false,
@@ -109,6 +190,7 @@ function valuesFromVm(vm: VmDto): VmFormValues {
     doNotAllowAccessAfter: vm.doNotAllowAccessAfter || '',
     enableAccountAfter: vm.enableAccountAfter || '',
     disableAccountAfter: vm.disableAccountAfter || '',
+    timezone: vm.timezone || DEFAULT_TIMEZONE,
     supportAudioInConsole: !!vm.supportAudioInConsole,
     disableAudio: !!vm.disableAudio,
     enableAudioInput: !!vm.enableAudioInput,
@@ -148,11 +230,21 @@ function valuesFromVm(vm: VmDto): VmFormValues {
   };
 }
 
-const Section: React.FC<{ title: string; description?: string; children: React.ReactNode }> = ({ title, description, children }) => (
+const Section: React.FC<{
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, description, action, children }) => (
   <Card>
     <CardHeader className="pb-4">
-      <CardTitle className="text-base">{title}</CardTitle>
-      {description && <CardDescription>{description}</CardDescription>}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <CardTitle className="text-base">{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
     </CardHeader>
     <CardContent className="space-y-4">{children}</CardContent>
   </Card>
@@ -266,6 +358,7 @@ export const VmFormPage: React.FC = () => {
         doNotAllowAccessAfter: values.doNotAllowAccessAfter.trim() || null,
         enableAccountAfter: values.enableAccountAfter.trim() || null,
         disableAccountAfter: values.disableAccountAfter.trim() || null,
+        timezone: values.timezone.trim() || null,
         supportAudioInConsole: values.supportAudioInConsole,
         disableAudio: values.disableAudio,
         enableAudioInput: values.enableAudioInput,
@@ -349,6 +442,23 @@ export const VmFormPage: React.FC = () => {
     if (['3389', '5900', '22', ''].includes(currentPort)) {
       formik.setFieldValue('port', getDefaultPort(newProtocol));
     }
+  };
+
+  const hasAccessRestrictions = Boolean(
+    formik.values.allowAccessAfter ||
+    formik.values.doNotAllowAccessAfter ||
+    formik.values.enableAccountAfter ||
+    formik.values.disableAccountAfter ||
+    (formik.values.timezone && formik.values.timezone !== DEFAULT_TIMEZONE)
+  );
+
+  const handleResetAccessRestrictions = () => {
+    formik.setFieldValue('allowAccessAfter', '');
+    formik.setFieldValue('doNotAllowAccessAfter', '');
+    formik.setFieldValue('enableAccountAfter', '');
+    formik.setFieldValue('disableAccountAfter', '');
+    formik.setFieldValue('timezone', DEFAULT_TIMEZONE);
+    toast.info('Access restrictions reset (Default: Asia/Kolkata - Mumbai, India)');
   };
 
   const fieldError = (name: keyof VmFormValues) =>
@@ -579,23 +689,127 @@ export const VmFormPage: React.FC = () => {
           <Section
             title="Access Restrictions"
             description="Leave blank for no restriction. Daily time window and calendar dates control when users can connect."
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetAccessRestrictions}
+                disabled={!hasAccessRestrictions}
+                className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                title="Reset all access restrictions to blank"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset all
+              </Button>
+            }
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="allowAccessAfter" className="font-normal text-sm">Allow access after</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="allowAccessAfter" className="font-normal text-sm">Allow access after</Label>
+                  {formik.values.allowAccessAfter && (
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('allowAccessAfter', '')}
+                      className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                      title="Reset this value to blank"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <Input id="allowAccessAfter" name="allowAccessAfter" type="time" value={formik.values.allowAccessAfter} onChange={formik.handleChange} onBlur={formik.handleBlur} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="doNotAllowAccessAfter" className="font-normal text-sm">Do not allow access after</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="doNotAllowAccessAfter" className="font-normal text-sm">Do not allow access after</Label>
+                  {formik.values.doNotAllowAccessAfter && (
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('doNotAllowAccessAfter', '')}
+                      className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                      title="Reset this value to blank"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <Input id="doNotAllowAccessAfter" name="doNotAllowAccessAfter" type="time" value={formik.values.doNotAllowAccessAfter} onChange={formik.handleChange} onBlur={formik.handleBlur} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="enableAccountAfter" className="font-normal text-sm">Enable account after</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="enableAccountAfter" className="font-normal text-sm">Enable account after</Label>
+                  {formik.values.enableAccountAfter && (
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('enableAccountAfter', '')}
+                      className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                      title="Reset this value to blank"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <Input id="enableAccountAfter" name="enableAccountAfter" type="date" value={formik.values.enableAccountAfter} onChange={formik.handleChange} onBlur={formik.handleBlur} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="disableAccountAfter" className="font-normal text-sm">Disable account after</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="disableAccountAfter" className="font-normal text-sm">Disable account after</Label>
+                  {formik.values.disableAccountAfter && (
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('disableAccountAfter', '')}
+                      className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                      title="Reset this value to blank"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <Input id="disableAccountAfter" name="disableAccountAfter" type="date" value={formik.values.disableAccountAfter} onChange={formik.handleChange} onBlur={formik.handleBlur} />
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="timezone" className="font-normal text-sm flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                    Time Zone
+                  </Label>
+                  {formik.values.timezone && formik.values.timezone !== DEFAULT_TIMEZONE && (
+                    <button
+                      type="button"
+                      onClick={() => formik.setFieldValue('timezone', DEFAULT_TIMEZONE)}
+                      className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+                      title="Reset time zone to default (Asia/Kolkata - Mumbai, India)"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+                <select
+                  id="timezone"
+                  name="timezone"
+                  value={formik.values.timezone}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value={DEFAULT_TIMEZONE}>Default: Asia/Kolkata (Mumbai, India Standard Time)</option>
+                  {TIMEZONE_OPTIONS.filter((tz) => tz.value !== DEFAULT_TIMEZONE).map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  Time window and calendar restrictions are evaluated in this time zone. By default uses Mumbai / Asia India (Asia/Kolkata). Also sets the clock in the remote desktop session.
+                </p>
               </div>
             </div>
           </Section>

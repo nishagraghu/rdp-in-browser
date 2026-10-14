@@ -12,6 +12,7 @@ import {
   clampConnectionLimit,
   normalizeAccessTime,
   normalizeAccessDate,
+  normalizeTimezone,
 } from '../../shared';
 import { commonDriveExists, normalizeCommonDriveRelative } from '../../utils/userDrive';
 
@@ -171,7 +172,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout, maxConnections, maxConnectionsPerUser,
-      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter, timezone,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -217,6 +218,7 @@ export async function createVm(req: AuthenticatedRequest, res: Response): Promis
         doNotAllowAccessAfter: normalizeAccessTime(doNotAllowAccessAfter),
         enableAccountAfter: normalizeAccessDate(enableAccountAfter),
         disableAccountAfter: normalizeAccessDate(disableAccountAfter),
+        timezone: normalizeTimezone(timezone),
         supportAudioInConsole: Boolean(supportAudioInConsole),
         disableAudio: Boolean(disableAudio),
         enableAudioInput: Boolean(enableAudioInput),
@@ -300,7 +302,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
       normalizeClipboard, disableCopy, disablePaste,
       displayWidth, displayHeight, dpi, colorDepth, forceLossless, resizeMethod, readOnly,
       connectionTimeout, maxConnections, maxConnectionsPerUser,
-      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter,
+      allowAccessAfter, doNotAllowAccessAfter, enableAccountAfter, disableAccountAfter, timezone,
       enableWallpaper, enableTheming, enableFontSmoothing, enableFullWindowDrag,
       enableDesktopComposition, enableMenuAnimations, disableBitmapCaching,
       disableOffscreenCaching, disableGlyphCaching, disableGfx,
@@ -337,6 +339,7 @@ export async function updateVm(req: AuthenticatedRequest, res: Response): Promis
     if (doNotAllowAccessAfter !== undefined) updateData.doNotAllowAccessAfter = normalizeAccessTime(doNotAllowAccessAfter);
     if (enableAccountAfter !== undefined) updateData.enableAccountAfter = normalizeAccessDate(enableAccountAfter);
     if (disableAccountAfter !== undefined) updateData.disableAccountAfter = normalizeAccessDate(disableAccountAfter);
+    if (timezone !== undefined) updateData.timezone = normalizeTimezone(timezone);
     
     if (supportAudioInConsole !== undefined) updateData.supportAudioInConsole = Boolean(supportAudioInConsole);
     if (disableAudio !== undefined) updateData.disableAudio = Boolean(disableAudio);

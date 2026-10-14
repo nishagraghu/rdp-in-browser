@@ -51,6 +51,7 @@ export interface VmDto {
   doNotAllowAccessAfter?: string | null;
   enableAccountAfter?: string | null;
   disableAccountAfter?: string | null;
+  timezone?: string | null;
   
   // Device Redirection
   supportAudioInConsole?: boolean;
