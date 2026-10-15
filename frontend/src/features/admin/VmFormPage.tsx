@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
 import { toast } from 'sonner';
 import {
-  AlertCircle, ArrowLeft, Eye, EyeOff, Globe, Lock, RotateCcw, Server, UserCheck, Users,
+  AlertCircle, ArrowLeft, Eye, EyeOff, Globe, Loader2, Lock, RotateCcw, Server, UserCheck, Users,
 } from 'lucide-react';
 import { AppDispatch, RootState } from '../../store';
 import { fetchVms, fetchVmById, createVm, updateVm } from '../../store/vmSlice';
@@ -255,37 +255,43 @@ export const VmFormPage: React.FC = () => {
   const isEdit = !!id;
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
-  const { vms, currentVm } = useSelector((state: RootState) => state.vms);
   const { users } = useSelector((state: RootState) => state.users);
 
   const [showPassword, setShowPassword] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const [editingVm, setEditingVm] = useState<VmDto | null>(null);
   const [loadingVm, setLoadingVm] = useState(isEdit);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const editingVm: VmDto | null = useMemo(() => {
-    if (!isEdit) return null;
-    if (currentVm && currentVm.id === id) return currentVm;
-    return vms.find((v) => v.id === id) || null;
-  }, [isEdit, id, currentVm, vms]);
 
   useEffect(() => {
     dispatch(fetchUsers());
   }, [dispatch]);
 
   useEffect(() => {
-    if (!isEdit || !id) return;
+    if (!isEdit || !id) {
+      setLoadingVm(false);
+      setEditingVm(null);
+      return;
+    }
     let cancelled = false;
     setLoadingVm(true);
     setLoadError(null);
+    setEditingVm(null);
+
     dispatch(fetchVmById(id)).then((res) => {
       if (cancelled) return;
-      if (!fetchVmById.fulfilled.match(res)) {
+      if (fetchVmById.fulfilled.match(res)) {
+        const freshVm = res.payload as VmDto;
+        setEditingVm(freshVm);
+        formik.setValues(valuesFromVm(freshVm));
+        setSelectedUserIds(freshVm.assignedUsers?.map((u: UserDto) => u.id) || []);
+      } else {
         setLoadError('This VM could not be loaded. It may have been deleted.');
       }
       setLoadingVm(false);
     });
+
     return () => {
       cancelled = true;
     };
@@ -426,15 +432,6 @@ export const VmFormPage: React.FC = () => {
     },
   });
 
-  // Prefill once the VM arrives (from cache or from the fetch).
-  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!isEdit || !editingVm || prefilledFor === editingVm.id) return;
-    formik.setValues(valuesFromVm(editingVm));
-    setSelectedUserIds(editingVm.assignedUsers?.map((u: UserDto) => u.id) || []);
-    setPrefilledFor(editingVm.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, editingVm, prefilledFor]);
 
   const handleProtocolChange = (newProtocol: VmProtocol) => {
     const currentPort = formik.values.port;
@@ -471,13 +468,16 @@ export const VmFormPage: React.FC = () => {
 
   const title = isEdit ? (editingVm ? `Edit VM: ${editingVm.name}` : 'Edit VM') : 'Add New Virtual Machine';
 
-  if (isEdit && loadingVm && !editingVm) {
+  if (isEdit && loadingVm) {
     return (
-      <div className="p-8 text-center text-muted-foreground">Loading virtual machine...</div>
+      <div className="p-12 text-center text-muted-foreground flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <span className="text-sm">Loading virtual machine details from server...</span>
+      </div>
     );
   }
 
-  if (isEdit && loadError && !editingVm) {
+  if (isEdit && loadError) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" onClick={() => navigate('/admin/vms')} className="gap-2 -ml-2">

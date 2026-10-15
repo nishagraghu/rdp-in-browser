@@ -45,6 +45,10 @@ function resolveCommonDriveInput(
 
 export async function getVms(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const userRole = req.user?.role;
     const userId = req.user?.userId;
 
@@ -105,6 +109,10 @@ export async function getVms(req: AuthenticatedRequest, res: Response): Promise<
 
 export async function getVmById(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const { id } = req.params;
     const userId = req.user?.userId;
     const userRole = req.user?.role;

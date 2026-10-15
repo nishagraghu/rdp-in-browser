@@ -66,13 +66,22 @@ export default function RDPSession({
     // Mouse — use raw DOM events so MouseEvent.buttons reflects the physical
     // button state even when the cursor dragged in from another browser window.
     // This enables seamless click-drag across the primary/secondary monitors.
-    const sendMouseFromEvent = (e: MouseEvent) => {
-      if (!rdpReadyRef.current) return;
-      e.preventDefault();
+    let mouseRafId: number | null = null;
+    let pendingMouseState: any = null;
+
+    const flushMouseState = () => {
+      mouseRafId = null;
+      if (pendingMouseState && client) {
+        client.sendMouseState(pendingMouseState);
+        pendingMouseState = null;
+      }
+    };
+
+    const buildMouseState = (e: MouseEvent) => {
       const s = scaleRef.current || 1;
       const rect = el.getBoundingClientRect();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const state = new (Guacamole.Mouse.State as any)(
+      return new (Guacamole.Mouse.State as any)(
         Math.round((e.clientX - rect.left) / s),
         Math.round((e.clientY - rect.top)  / s),
         (e.buttons & 1) !== 0,  // left
@@ -80,8 +89,28 @@ export default function RDPSession({
         (e.buttons & 2) !== 0,  // right
         false, false,
       );
-      client.sendMouseState(state);
     };
+
+    const sendMouseImmediate = (e: MouseEvent) => {
+      if (!rdpReadyRef.current) return;
+      e.preventDefault();
+      if (mouseRafId !== null) {
+        cancelAnimationFrame(mouseRafId);
+        mouseRafId = null;
+      }
+      pendingMouseState = null;
+      client.sendMouseState(buildMouseState(e));
+    };
+
+    const sendMouseMoveThrottled = (e: MouseEvent) => {
+      if (!rdpReadyRef.current) return;
+      e.preventDefault();
+      pendingMouseState = buildMouseState(e);
+      if (mouseRafId === null) {
+        mouseRafId = requestAnimationFrame(flushMouseState);
+      }
+    };
+
     const sendWheelFromEvent = (e: WheelEvent) => {
       if (!rdpReadyRef.current) return;
       e.preventDefault();
@@ -97,9 +126,9 @@ export default function RDPSession({
       );
       client.sendMouseState(state);
     };
-    el.addEventListener('mousemove',   sendMouseFromEvent);
-    el.addEventListener('mousedown',   sendMouseFromEvent);
-    el.addEventListener('mouseup',     sendMouseFromEvent);
+    el.addEventListener('mousemove',   sendMouseMoveThrottled);
+    el.addEventListener('mousedown',   sendMouseImmediate);
+    el.addEventListener('mouseup',     sendMouseImmediate);
     el.addEventListener('contextmenu', (ev) => ev.preventDefault());
     el.addEventListener('wheel',       sendWheelFromEvent, { passive: false });
 
@@ -148,6 +177,10 @@ export default function RDPSession({
 
     return () => {
       rdpReadyRef.current = false;
+      if (mouseRafId !== null) {
+        cancelAnimationFrame(mouseRafId);
+        mouseRafId = null;
+      }
       keyboard.onkeydown = null;
       keyboard.onkeyup   = null;
       if (keyboardTarget) {

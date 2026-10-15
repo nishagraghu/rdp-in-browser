@@ -15,6 +15,9 @@ const originalNetConnect = net.connect;
 (net as any).connect = function (...args: any[]) {
   const socket = originalNetConnect.apply(this, args as any);
   socket.setNoDelay(true);
+  socket.once('connect', () => {
+    socket.setNoDelay(true);
+  });
   return socket;
 };
 
@@ -107,6 +110,9 @@ app.get('/health', (_req, res) => {
 });
 
 const httpServer = http.createServer(app);
+httpServer.on('connection', (socket) => {
+  socket.setNoDelay(true);
+});
 
 // GuacamoleLite WebSocket bridge
 const guacServer = new GuacamoleLite(
@@ -119,7 +125,9 @@ const guacServer = new GuacamoleLite(
   { host: config.GUACD_HOST, port: config.GUACD_PORT },
   {
     crypt: { cypher: 'AES-256-CBC', key: config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0') },
-    log: { level: 'INFO' },
+    // Use ERRORS (level 10). 'INFO' is invalid in guacamole-lite and causes NaN comparison
+    // that triggers verbose console.log on every instruction/frame, blocking the Node event loop!
+    log: { level: 'ERRORS' },
   },
 );
 

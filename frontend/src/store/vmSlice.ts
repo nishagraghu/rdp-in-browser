@@ -22,12 +22,18 @@ const initialState: VmState = {
 };
 
 export const fetchVms = createAsyncThunk('vms/fetchVms', async () => {
-  const res = await api.get('/vms');
+  const res = await api.get('/vms', {
+    params: { _t: Date.now() },
+    headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+  });
   return res.data.data;
 });
 
 export const fetchVmById = createAsyncThunk('vms/fetchVmById', async (id: string) => {
-  const res = await api.get(`/vms/${id}`);
+  const res = await api.get(`/vms/${id}`, {
+    params: { _t: Date.now() },
+    headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+  });
   return res.data.data;
 });
 

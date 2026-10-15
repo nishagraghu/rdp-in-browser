@@ -391,6 +391,7 @@ export const RemoteDesktopView: React.FC = () => {
     let resizeObserver: ResizeObserver | null = null;
     let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let clipboardBridge: RdpClipboardBridge | null = null;
+    let mouseRafId: number | null = null;
 
     const initSession = async () => {
       setConnectionStatus('connecting');
@@ -566,9 +567,34 @@ export const RemoteDesktopView: React.FC = () => {
         displayElement.style.cursor = 'none';
 
         const mouse = new Guacamole.Mouse(displayElement);
-        mouse.onEach(['mousedown', 'mousemove', 'mouseup'], (event) => {
+        let pendingMouseState: Guacamole.Mouse.State | null = null;
+
+        const flushMouseState = () => {
+          mouseRafId = null;
+          if (pendingMouseState && clientRef.current) {
+            clientRef.current.sendMouseState(pendingMouseState, true);
+            pendingMouseState = null;
+          }
+        };
+
+        // Clicks must be dispatched immediately to prevent dropped clicks or input lag
+        mouse.onEach(['mousedown', 'mouseup'], (event) => {
+          if (mouseRafId !== null) {
+            cancelAnimationFrame(mouseRafId);
+            mouseRafId = null;
+          }
+          pendingMouseState = null;
           const state = (event as Guacamole.Mouse.Event).state;
           clientRef.current?.sendMouseState(state, true);
+        });
+
+        // Throttle mousemove events to display refresh rate (~60-120fps) via requestAnimationFrame
+        // to prevent saturating the WebSocket channel with hundreds of intermediate cursor positions
+        mouse.on('mousemove', (event) => {
+          pendingMouseState = (event as Guacamole.Mouse.Event).state;
+          if (mouseRafId === null) {
+            mouseRafId = requestAnimationFrame(flushMouseState);
+          }
         });
         displayElement.addEventListener('mousedown', () => {
           focusDisplay();
@@ -642,6 +668,10 @@ export const RemoteDesktopView: React.FC = () => {
 
     return () => {
       cancelled = true;
+      if (mouseRafId !== null) {
+        cancelAnimationFrame(mouseRafId);
+        mouseRafId = null;
+      }
       if (guacRetryTimerRef.current) {
         clearTimeout(guacRetryTimerRef.current);
         guacRetryTimerRef.current = null;
