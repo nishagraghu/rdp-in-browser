@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import Guacamole from 'guacamole-common-js';
-import api from '../../api/client';
+import api, { setAccessToken } from '../../api/client';
 import { AppDispatch, RootState } from '../../store';
 import { endVmConnection, startVmConnection, VM_CONNECTION_REVEAL_DELAY_MS } from '../../store/vmSlice';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +56,9 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
  */
 function describeGuacError(status: Guacamole.Status): string {
   const raw = status.message || '';
+  if (/administrator|logged out/i.test(raw) || (status.code as number) === 523 || (status.code as number) === 0x020b) {
+    return 'You have been logged out by an administrator.';
+  }
   if (/desktop service unavailable/i.test(raw)) {
     return 'The remote desktop gateway (guacd) is not running or cannot be reached from the server. Ask an administrator to start it and try again.';
   }
@@ -95,10 +98,12 @@ export const RemoteDesktopView: React.FC = () => {
 
   const wasConnectedRef = useRef(false);
   const needsReconnectRef = useRef(false);
+  const isAdminLoggedOutRef = useRef(false);
   const guacRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guacRetryCountRef = useRef(0);
 
   const reconnectSession = useCallback(() => {
+    if (isAdminLoggedOutRef.current) return;
     if (clientRef.current) {
       try {
         clientRef.current.disconnect();
@@ -113,6 +118,7 @@ export const RemoteDesktopView: React.FC = () => {
   const networkStatus = useNetworkStatus({
     reconnectIntervalMs: 3000,
     onOnline: () => {
+      if (isAdminLoggedOutRef.current) return;
       // Auto-reconnect remote desktop when internet is restored
       const shouldReconnect =
         needsReconnectRef.current ||
@@ -431,6 +437,39 @@ export const RemoteDesktopView: React.FC = () => {
         client = new Guacamole.Client(tunnel);
         clientRef.current = client;
 
+        const handleAdminLogout = () => {
+          if (isAdminLoggedOutRef.current) return;
+          isAdminLoggedOutRef.current = true;
+          needsReconnectRef.current = false;
+          wasConnectedRef.current = false;
+          if (guacRetryTimerRef.current) {
+            clearTimeout(guacRetryTimerRef.current);
+            guacRetryTimerRef.current = null;
+          }
+          guacRetryCountRef.current = 999;
+          try {
+            clientRef.current?.disconnect();
+          } catch {}
+          clientRef.current = null;
+          setErrorMessage('You have been logged out by an administrator.');
+          setConnectionStatus('error');
+          toast.error('You have been logged out by an administrator.');
+          setAccessToken(null);
+          setTimeout(() => {
+            window.location.href = '/login?reason=admin_logout';
+          }, 1200);
+        };
+
+        tunnel.onerror = (status: Guacamole.Status) => {
+          if (
+            (status.code as number) === 523 ||
+            (status.code as number) === 0x020b ||
+            /administrator|logged out|session_closed/i.test(status.message || '')
+          ) {
+            handleAdminLogout();
+          }
+        };
+
         client.onerror = (errorState: Guacamole.Status) => {
           if (connectTimeoutId) {
             clearTimeout(connectTimeoutId);
@@ -439,8 +478,18 @@ export const RemoteDesktopView: React.FC = () => {
           console.error('Guacamole client error:', errorState);
           dispatch(endVmConnection());
 
+          const isAdminLogout =
+            (errorState.code as number) === 523 ||
+            (errorState.code as number) === 0x020b ||
+            /administrator|logged out|forced? logout|session_closed/i.test(errorState.message || '');
+
+          if (isAdminLogout) {
+            handleAdminLogout();
+            return;
+          }
+
           // If session was interrupted by network loss and internet is online, retry up to 5 times
-          if (needsReconnectRef.current || wasConnectedRef.current) {
+          if (!isAdminLoggedOutRef.current && (needsReconnectRef.current || wasConnectedRef.current)) {
             guacRetryCountRef.current += 1;
             if (guacRetryCountRef.current <= 5) {
               setConnectionStatus('connecting');
@@ -542,6 +591,10 @@ export const RemoteDesktopView: React.FC = () => {
             case 4:
             case 5:
               isConnectedRef.current = false;
+              if (isAdminLoggedOutRef.current) {
+                setConnectionStatus('error');
+                return;
+              }
               setConnectionStatus((prev) => (prev === 'error' ? prev : 'disconnected'));
               break;
           }
@@ -716,11 +769,38 @@ export const RemoteDesktopView: React.FC = () => {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
+      if (isAdminLoggedOutRef.current) return;
       try {
         const res = await api.get(`/vms/${vmId}/sessions`, { params: { sessionId } });
-        if (cancelled) return;
+        if (cancelled || isAdminLoggedOutRef.current) return;
         const sessions: Array<{ sessionId: string; username: string; isMine: boolean }> =
           res.data?.data?.sessions || [];
+
+        // If our session is no longer in the active sessions list, it was terminated by an admin
+        const mySessionActive = sessions.some((s) => s.isMine || s.sessionId === sessionId);
+        if (sessionId && !mySessionActive) {
+          isAdminLoggedOutRef.current = true;
+          needsReconnectRef.current = false;
+          wasConnectedRef.current = false;
+          if (guacRetryTimerRef.current) {
+            clearTimeout(guacRetryTimerRef.current);
+            guacRetryTimerRef.current = null;
+          }
+          guacRetryCountRef.current = 999;
+          try {
+            clientRef.current?.disconnect();
+          } catch {}
+          clientRef.current = null;
+          setErrorMessage('You have been logged out by an administrator.');
+          setConnectionStatus('error');
+          toast.error('You have been logged out by an administrator.');
+          setAccessToken(null);
+          setTimeout(() => {
+            window.location.href = '/login?reason=admin_logout';
+          }, 1200);
+          return;
+        }
+
         const names = Array.from(
           new Set(sessions.filter((s) => !s.isMine).map((s) => s.username)),
         ).sort();
@@ -767,6 +847,10 @@ export const RemoteDesktopView: React.FC = () => {
   };
 
   const handleReconnect = () => {
+    if (isAdminLoggedOutRef.current) {
+      window.location.href = '/login?reason=admin_logout';
+      return;
+    }
     reconnectSession();
   };
 
@@ -1233,9 +1317,15 @@ export const RemoteDesktopView: React.FC = () => {
               </p> */}
             </div>
             <div className="flex space-x-3 pt-2">
-              <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
-                Retry Connection
-              </Button>
+              {isAdminLoggedOutRef.current ? (
+                <Button onClick={() => { window.location.href = '/login?reason=admin_logout'; }} className="font-semibold rounded-xl text-sm">
+                  Return to Login
+                </Button>
+              ) : (
+                <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
+                  Retry Connection
+                </Button>
+              )}
               <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
                 Return to Dashboard
               </Button>
@@ -1249,9 +1339,13 @@ export const RemoteDesktopView: React.FC = () => {
               <Power className="w-10 h-10" />
             </div>
             <div>
-              <h3 className="text-xl font-bold">Remote Session Disconnected</h3>
+              <h3 className="text-xl font-bold">
+                {isAdminLoggedOutRef.current ? 'Logged Out by Administrator' : 'Remote Session Disconnected'}
+              </h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
-                The connection to the remote desktop was closed.
+                {isAdminLoggedOutRef.current
+                  ? 'Your session was ended by an administrator and you have been signed out.'
+                  : 'The connection to the remote desktop was closed.'}
               </p>
               {networkStatus.isOffline ? (
                 <p className="text-xs text-amber-500 font-medium max-w-md mx-auto mt-2 flex items-center justify-center gap-1.5">
@@ -1266,9 +1360,15 @@ export const RemoteDesktopView: React.FC = () => {
               ) : null}
             </div>
             <div className="flex space-x-3 pt-2">
-              <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
-                Reconnect
-              </Button>
+              {isAdminLoggedOutRef.current ? (
+                <Button onClick={() => { window.location.href = '/login?reason=admin_logout'; }} className="font-semibold rounded-xl text-sm">
+                  Return to Login
+                </Button>
+              ) : (
+                <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
+                  Reconnect
+                </Button>
+              )}
               <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
                 Return to Dashboard
               </Button>

@@ -1,7 +1,8 @@
 import { Response } from 'express';
-import { AuthenticatedRequest } from '../../middleware/auth';
+import { AuthenticatedRequest, revokeUserSessions } from '../../middleware/auth';
 import { AuditAction } from '../../shared';
 import { createAuditLog } from '../../utils/auditLogger';
+import { prisma } from '../../db/prisma';
 import * as sessionRegistry from './sessionRegistry';
 
 function toDto(entry: sessionRegistry.SessionEntry) {
@@ -21,7 +22,7 @@ export async function listActiveSessions(_req: AuthenticatedRequest, res: Respon
   res.json({ success: true, data: { sessions } });
 }
 
-/** Force-close one session. The remote desktop disconnects immediately. */
+/** Force-close session and log user out of the entire application. */
 export async function terminateSession(req: AuthenticatedRequest, res: Response): Promise<void> {
   const entry = sessionRegistry.terminate(req.params.sessionId);
   if (!entry) {
@@ -29,11 +30,20 @@ export async function terminateSession(req: AuthenticatedRequest, res: Response)
     return;
   }
 
+  // 1. Delete all refresh tokens so the user cannot acquire new access tokens
+  await prisma.refreshToken.deleteMany({ where: { userId: entry.userId } });
+
+  // 2. Invalidate currently active JWT tokens so subsequent API requests immediately fail with FORCE_LOGGED_OUT
+  revokeUserSessions(entry.userId);
+
+  // 3. Terminate any remaining active remote desktop sessions for this user
+  sessionRegistry.terminateAllForUser(entry.userId);
+
   await createAuditLog({
     userId: req.user?.userId,
     userName: req.user?.username,
     action: AuditAction.SESSION_TERMINATE,
-    details: `Force-logged out ${entry.username} from ${entry.vmName} (session ${entry.sessionId})`,
+    details: `Force-logged out ${entry.username} from ${entry.vmName} and ended application session (session ${entry.sessionId})`,
     ipAddress: req.ip,
   });
 

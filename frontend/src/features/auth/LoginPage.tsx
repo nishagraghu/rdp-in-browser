@@ -195,6 +195,22 @@ export const LoginPage: React.FC = () => {
               )}
             </div>
 
+            {location.search.includes('reason=admin_logout') && (
+              <Alert variant="destructive" className="mb-4 py-3 border-amber-300 bg-amber-50 text-amber-900">
+                <AlertDescription className="text-xs font-medium">
+                  You have been logged out of the application by an administrator.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {location.search.includes('reason=account_disabled') && (
+              <Alert variant="destructive" className="mb-4 py-3">
+                <AlertDescription className="text-xs">
+                  Your account is disabled. Please contact an administrator.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {successMessage && !twoFactorPending && (
               <Alert
                 variant="default"

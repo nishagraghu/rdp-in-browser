@@ -150,13 +150,17 @@ guacServer.on('open', (connection) => {
   sessionRegistry.bindDisconnect(sessionId, () => {
     try {
       connection.send(guacInstruction('error', [
-        'This session was ended by an administrator.',
-        'SESSION_CLOSED',
+        'You have been logged out by an administrator.',
+        '523',
       ]));
     } catch {
       /* socket may already be gone */
     }
-    connection.close();
+    setTimeout(() => {
+      try {
+        connection.close();
+      } catch {}
+    }, 50);
   });
 });
 guacServer.on('close', (connection) => {

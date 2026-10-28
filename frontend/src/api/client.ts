@@ -38,11 +38,15 @@ api.interceptors.response.use(
     const requestUrl = originalRequest?.url || '';
     const errorCode = error.response?.data?.code;
 
-    // Disabled accounts: clear session and force login immediately
-    if (error.response?.status === 401 && errorCode === 'ACCOUNT_DISABLED') {
+    // Disabled accounts or admin force-logout: clear session and force login immediately
+    if (
+      error.response?.status === 401 &&
+      (errorCode === 'ACCOUNT_DISABLED' || errorCode === 'FORCE_LOGGED_OUT')
+    ) {
       setAccessToken(null);
       if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-        window.location.href = '/login';
+        const reason = errorCode === 'FORCE_LOGGED_OUT' ? 'admin_logout' : 'account_disabled';
+        window.location.href = `/login?reason=${reason}`;
       }
       return Promise.reject(error);
     }

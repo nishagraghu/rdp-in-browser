@@ -5,6 +5,8 @@ export interface TokenPayload {
   userId: string;
   username: string;
   role: string;
+  iat?: number;
+  exp?: number;
 }
 
 export function generateAccessToken(payload: TokenPayload): string {

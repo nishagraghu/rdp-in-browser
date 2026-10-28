@@ -81,7 +81,10 @@ export function release(sessionId: string | undefined): void {
   if (!sessionId) return;
   sessions.delete(sessionId);
   disconnectors.delete(sessionId);
-  terminated.delete(sessionId);
+  // Keep in terminated set for 60s so any race/reconnect using this session token is rejected
+  setTimeout(() => {
+    terminated.delete(sessionId);
+  }, 60_000);
 }
 
 export function listAll(statuses: SessionStatus[] = ['active']): SessionEntry[] {
@@ -114,6 +117,19 @@ export function terminate(sessionId: string): SessionEntry | null {
     }
   }
   return entry;
+}
+
+/** Terminate all live sessions belonging to a specific user. */
+export function terminateAllForUser(userId: string): SessionEntry[] {
+  sweepStalePending();
+  const terminatedList: SessionEntry[] = [];
+  for (const [id, entry] of Array.from(sessions.entries())) {
+    if (entry.userId === userId) {
+      const term = terminate(id);
+      if (term) terminatedList.push(term);
+    }
+  }
+  return terminatedList;
 }
 
 export function listForVm(vmId: string, statuses: SessionStatus[] = ['active']): SessionEntry[] {

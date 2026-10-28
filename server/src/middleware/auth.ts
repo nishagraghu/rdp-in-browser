@@ -7,6 +7,24 @@ export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
 }
 
+// In-memory revocation tracking: userId -> timestamp (ms) when user was force-logged out
+const revokedUsers = new Map<string, number>();
+
+export function revokeUserSessions(userId: string): void {
+  revokedUsers.set(userId, Date.now());
+}
+
+export function isUserRevoked(userId: string, tokenIatSeconds?: number): boolean {
+  const revokedAt = revokedUsers.get(userId);
+  if (!revokedAt) return false;
+  if (!tokenIatSeconds) return true;
+  return (tokenIatSeconds * 1000) <= revokedAt;
+}
+
+export function clearUserRevocation(userId: string): void {
+  revokedUsers.delete(userId);
+}
+
 export async function authenticateJWT(
   req: AuthenticatedRequest,
   res: Response,
@@ -28,6 +46,15 @@ export async function authenticateJWT(
 
   try {
     const payload = verifyAccessToken(token);
+
+    if (isUserRevoked(payload.userId, payload.iat)) {
+      res.status(401).json({
+        success: false,
+        error: 'You have been logged out by an administrator.',
+        code: 'FORCE_LOGGED_OUT',
+      });
+      return;
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },

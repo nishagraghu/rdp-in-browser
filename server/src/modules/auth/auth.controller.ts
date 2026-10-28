@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt';
 import { createAuditLog } from '../../utils/auditLogger';
-import { AuthenticatedRequest } from '../../middleware/auth';
+import { AuthenticatedRequest, clearUserRevocation } from '../../middleware/auth';
 import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
 import { ensureUserDriveDirectory } from '../../utils/userDrive';
 import { isSmtpConfigured, sendVerificationCodeEmail } from '../../utils/email';
@@ -298,6 +298,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    clearUserRevocation(user.id);
     const accessToken = await issueSessionTokens(user, req, res);
 
     await createAuditLog({
@@ -402,6 +403,7 @@ export async function verifyTwoFactor(req: Request, res: Response): Promise<void
 
     await prisma.twoFactorCode.delete({ where: { id: challenge.id } });
 
+    clearUserRevocation(user.id);
     const accessToken = await issueSessionTokens(user, req, res);
 
     await createAuditLog({

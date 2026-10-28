@@ -78,13 +78,13 @@ export const VmManagement: React.FC = () => {
 
   const handleForceLogout = async (session: ActiveSession) => {
     const ok = window.confirm(
-      `Log ${session.username} out of ${session.vmName}? Their remote desktop will disconnect immediately.`,
+      `Log ${session.username} out of ${session.vmName}? Their remote desktop will disconnect immediately and they will be logged out of the application.`,
     );
     if (!ok) return;
     setLoggingOutId(session.sessionId);
     try {
       await api.post(`/sessions/${session.sessionId}/logout`);
-      toast.success(`${session.username} was logged out of ${session.vmName}.`);
+      toast.success(`${session.username} was logged out of the application and their remote session was terminated.`);
       await loadSessions();
     } catch (err: unknown) {
       const errorResponse = err as { response?: { data?: { error?: string } } };
