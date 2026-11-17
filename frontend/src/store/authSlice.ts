@@ -58,8 +58,11 @@ export const fetchCurrentUser = createAsyncThunk(
       const res = await api.get('/auth/me');
       return res.data.data;
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string; code?: string } } };
-      setAccessToken(null);
+      const error = err as { response?: { status?: number; data?: { error?: string; code?: string } } };
+      // Only clear token if the server actively rejected authentication (401 or 403)
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        setAccessToken(null);
+      }
       return rejectWithValue(error.response?.data?.error || 'Unauthenticated');
     }
   }

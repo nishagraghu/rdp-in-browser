@@ -70,9 +70,19 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshErr) {
-        setAccessToken(null);
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-          window.location.href = '/login';
+        // Only force redirect to login if the server explicitly rejected the refresh token (401 or 403).
+        // If the refresh request failed due to a network blip, slow connection, or timeout,
+        // do NOT wipe user token or force logout!
+        const isAuthRejection =
+          axios.isAxiosError(refreshErr) &&
+          refreshErr.response &&
+          (refreshErr.response.status === 401 || refreshErr.response.status === 403);
+
+        if (isAuthRejection) {
+          setAccessToken(null);
+          if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
+            window.location.href = '/login';
+          }
         }
       }
     }
