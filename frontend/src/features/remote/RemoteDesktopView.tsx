@@ -56,7 +56,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
  */
 function describeGuacError(status: Guacamole.Status): string {
   const raw = status.message || '';
-  if (/administrator|logged out/i.test(raw) || (status.code as number) === 523 || (status.code as number) === 0x020b) {
+  if (/administrator|logged out by an admin/i.test(raw)) {
     return 'You have been logged out by an administrator.';
   }
   if (/desktop service unavailable/i.test(raw)) {
@@ -70,6 +70,9 @@ function describeGuacError(status: Guacamole.Status): string {
   }
   if (/security negotiation failed/i.test(raw)) {
     return 'The target machine refused the RDP security mode. Ask an administrator to check the NLA/TLS settings on that machine.';
+  }
+  if ((status.code as number) === 523 || (status.code as number) === 0x020b || /session_closed/i.test(raw)) {
+    return 'The remote desktop connection was closed.';
   }
   if (raw) return raw;
   const code = Number.isFinite(status.code) ? `0x${status.code.toString(16)}` : 'unknown';
@@ -86,6 +89,7 @@ export const RemoteDesktopView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const displayRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<Guacamole.Client | null>(null);
+  const tunnelRef = useRef<Guacamole.Tunnel | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
 
@@ -136,7 +140,7 @@ export const RemoteDesktopView: React.FC = () => {
       }
     },
     onOffline: () => {
-      toast.warning('Internet connection lost. You are currently offline.');
+      // Do not kill client or session when offline event or background tab throttling occurs
       if (connectionStatusRef.current === 'connected' || wasConnectedRef.current) {
         needsReconnectRef.current = true;
       }
@@ -144,12 +148,6 @@ export const RemoteDesktopView: React.FC = () => {
         clearTimeout(guacRetryTimerRef.current);
         guacRetryTimerRef.current = null;
       }
-      // Forcefully terminate client so it doesn't linger in broken TCP state
-      try {
-        clientRef.current?.disconnect();
-      } catch {}
-      isConnectedRef.current = false;
-      setConnectionStatus('disconnected');
     },
   });
   const [vmInfo, setVmInfo] = useState<{ id: string; name: string; protocol: string; hostname: string } | null>(null);
@@ -434,6 +432,9 @@ export const RemoteDesktopView: React.FC = () => {
         const targetWsUrl = `${wsProtocol}//${window.location.host}/ws`;
 
         tunnel = new Guacamole.WebSocketTunnel(targetWsUrl);
+        // Extend tunnel receive timeout so background tabs never close due to 15s idle timeout
+        (tunnel as unknown as { receiveTimeout: number }).receiveTimeout = 3600000; // 1 hour
+        tunnelRef.current = tunnel;
         client = new Guacamole.Client(tunnel);
         clientRef.current = client;
 
@@ -461,12 +462,24 @@ export const RemoteDesktopView: React.FC = () => {
         };
 
         tunnel.onerror = (status: Guacamole.Status) => {
-          if (
-            (status.code as number) === 523 ||
-            (status.code as number) === 0x020b ||
-            /administrator|logged out|session_closed/i.test(status.message || '')
-          ) {
+          const rawMsg = status.message || '';
+          if (/administrator|logged out by an admin/i.test(rawMsg)) {
             handleAdminLogout();
+            return;
+          }
+          // Do not treat code 523, 0x020b, or session_closed as admin logout.
+          // On slow/dropped websockets, trigger reconnect instead of logging out.
+          if (!isAdminLoggedOutRef.current && (wasConnectedRef.current || isConnectedRef.current)) {
+            needsReconnectRef.current = true;
+            guacRetryCountRef.current += 1;
+            if (guacRetryCountRef.current <= 10) {
+              setConnectionStatus('connecting');
+              setErrorMessage(`Connection slow or interrupted. Reconnecting (attempt ${guacRetryCountRef.current}/10)...`);
+              if (guacRetryTimerRef.current) clearTimeout(guacRetryTimerRef.current);
+              guacRetryTimerRef.current = setTimeout(() => {
+                reconnectSession();
+              }, 2500);
+            }
           }
         };
 
@@ -479,21 +492,20 @@ export const RemoteDesktopView: React.FC = () => {
           dispatch(endVmConnection());
 
           const isAdminLogout =
-            (errorState.code as number) === 523 ||
-            (errorState.code as number) === 0x020b ||
-            /administrator|logged out|forced? logout|session_closed/i.test(errorState.message || '');
+            /administrator/i.test(errorState.message || '') ||
+            /logged out by an admin/i.test(errorState.message || '');
 
           if (isAdminLogout) {
             handleAdminLogout();
             return;
           }
 
-          // If session was interrupted by network loss and internet is online, retry up to 5 times
-          if (!isAdminLoggedOutRef.current && (needsReconnectRef.current || wasConnectedRef.current)) {
+          // If session was interrupted or connection is slow/dropped, retry up to 10 times
+          if (!isAdminLoggedOutRef.current) {
             guacRetryCountRef.current += 1;
-            if (guacRetryCountRef.current <= 5) {
+            if (guacRetryCountRef.current <= 10) {
               setConnectionStatus('connecting');
-              setErrorMessage(`Reconnecting remote desktop (attempt ${guacRetryCountRef.current}/5)...`);
+              setErrorMessage(`Connection unstable or reconnecting (attempt ${guacRetryCountRef.current}/10)...`);
               if (guacRetryTimerRef.current) clearTimeout(guacRetryTimerRef.current);
               guacRetryTimerRef.current = setTimeout(() => {
                 reconnectSession();
@@ -595,6 +607,20 @@ export const RemoteDesktopView: React.FC = () => {
                 setConnectionStatus('error');
                 return;
               }
+              // If we were connected and unexpectedly disconnected (e.g. slow websocket), auto-reconnect
+              if (wasConnectedRef.current && !needsReconnectRef.current) {
+                needsReconnectRef.current = true;
+                guacRetryCountRef.current += 1;
+                if (guacRetryCountRef.current <= 10) {
+                  setConnectionStatus('connecting');
+                  setErrorMessage(`Connection dropped. Reconnecting (attempt ${guacRetryCountRef.current}/10)...`);
+                  if (guacRetryTimerRef.current) clearTimeout(guacRetryTimerRef.current);
+                  guacRetryTimerRef.current = setTimeout(() => {
+                    reconnectSession();
+                  }, 2500);
+                  return;
+                }
+              }
               setConnectionStatus((prev) => (prev === 'error' ? prev : 'disconnected'));
               break;
           }
@@ -687,6 +713,7 @@ export const RemoteDesktopView: React.FC = () => {
 
         client.connect(`token=${encodeURIComponent(token)}`);
 
+        const effectiveTimeoutSec = Math.max(45, timeoutSec);
         connectTimeoutId = setTimeout(() => {
           if (isConnectedRef.current) return;
           try {
@@ -694,12 +721,23 @@ export const RemoteDesktopView: React.FC = () => {
           } catch {
             /* already closed */
           }
+          // Do not permanently give up on slow connections — retry handshake
+          guacRetryCountRef.current += 1;
+          if (guacRetryCountRef.current <= 5) {
+            setConnectionStatus('connecting');
+            setErrorMessage(`Connection handshake slow. Retrying (attempt ${guacRetryCountRef.current}/5)...`);
+            if (guacRetryTimerRef.current) clearTimeout(guacRetryTimerRef.current);
+            guacRetryTimerRef.current = setTimeout(() => {
+              reconnectSession();
+            }, 2500);
+            return;
+          }
           setErrorMessage(
-            `Connection timed out after ${timeoutSec} seconds. The remote host did not complete the RDP handshake.`,
+            `Connection timed out after ${effectiveTimeoutSec} seconds. The remote host did not complete the RDP handshake.`,
           );
           setConnectionStatus('error');
           dispatch(endVmConnection());
-        }, timeoutSec * 1000);
+        }, effectiveTimeoutSec * 1000);
 
         if (containerRef.current) {
           resizeObserver = new ResizeObserver(() => {
@@ -751,6 +789,7 @@ export const RemoteDesktopView: React.FC = () => {
         } catch {}
         clientRef.current = null;
       }
+      tunnelRef.current = null;
       if (displayRef.current) {
         displayRef.current.replaceChildren();
       }
@@ -760,6 +799,23 @@ export const RemoteDesktopView: React.FC = () => {
       });
     };
   }, [vmId, sessionAttempt, applyScale, updateRemoteDisplaySize, getViewportSize, customScalePercent, dispatch]);
+
+  // Keep WebSocket tunnel actively communicating even when the browser tab is hidden/inactive
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+
+    const keepAliveTimer = setInterval(() => {
+      try {
+        if (tunnelRef.current && isConnectedRef.current) {
+          tunnelRef.current.sendMessage('nop');
+        }
+      } catch {}
+    }, 10000);
+
+    return () => {
+      clearInterval(keepAliveTimer);
+    };
+  }, [connectionStatus]);
 
   // Poll who else is connected to this desktop while our session is live.
   useEffect(() => {
@@ -776,33 +832,8 @@ export const RemoteDesktopView: React.FC = () => {
         const sessions: Array<{ sessionId: string; username: string; isMine: boolean }> =
           res.data?.data?.sessions || [];
 
-        // If our session is no longer in the active sessions list, it was terminated by an admin
-        const mySessionActive = sessions.some((s) => s.isMine || s.sessionId === sessionId);
-        if (sessionId && !mySessionActive) {
-          isAdminLoggedOutRef.current = true;
-          needsReconnectRef.current = false;
-          wasConnectedRef.current = false;
-          if (guacRetryTimerRef.current) {
-            clearTimeout(guacRetryTimerRef.current);
-            guacRetryTimerRef.current = null;
-          }
-          guacRetryCountRef.current = 999;
-          try {
-            clientRef.current?.disconnect();
-          } catch {}
-          clientRef.current = null;
-          setErrorMessage('You have been logged out by an administrator.');
-          setConnectionStatus('error');
-          toast.error('You have been logged out by an administrator.');
-          setAccessToken(null);
-          setTimeout(() => {
-            window.location.href = '/login?reason=admin_logout';
-          }, 1200);
-          return;
-        }
-
         const names = Array.from(
-          new Set(sessions.filter((s) => !s.isMine).map((s) => s.username)),
+          new Set(sessions.filter((s) => !s.isMine && s.sessionId !== sessionId).map((s) => s.username)),
         ).sort();
 
         const newcomers = names.filter((n) => !knownOtherUsersRef.current.has(n));

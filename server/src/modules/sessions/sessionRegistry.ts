@@ -23,7 +23,7 @@ export interface SessionEntry extends SessionMeta {
   connectedAt: Date | null;
 }
 
-const PENDING_TTL_MS = 60_000;
+const PENDING_TTL_MS = 120_000;
 
 const sessions = new Map<string, SessionEntry>();
 /** Closes the live Guacamole tunnel for a session, once the WebSocket has opened. */
