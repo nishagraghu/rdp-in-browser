@@ -50,7 +50,7 @@ export interface UseNetworkStatusReturn {
  */
 async function probeConnectivity(
   pingUrl: string,
-  timeoutMs = 8000,
+  timeoutMs = 3000,
 ): Promise<{ ok: boolean; latency: number | null }> {
   // 1. Browser OS network stack check
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -142,11 +142,6 @@ export function useNetworkStatus(options: UseNetworkStatusOptions = {}): UseNetw
   onReconnectingRef.current = onReconnecting;
 
   const checkConnection = useCallback(async (): Promise<boolean> => {
-    // If the browser tab is hidden in background, avoid marking offline from throttled probes
-    if (typeof document !== 'undefined' && document.hidden) {
-      return statusRef.current === 'online';
-    }
-
     if (isProbingRef.current) return statusRef.current === 'online';
     isProbingRef.current = true;
 

@@ -26,8 +26,8 @@ interface GuacClientConnection {
   connectionSettings?: { meta?: { sessionId?: string } };
   send(message: string): void;
   close(error?: Error): void;
-  guacdClient?: { guacdConnection?: { setNoDelay(noDelay?: boolean): void; setKeepAlive?(enable?: boolean, initialDelay?: number): void } };
-  webSocket?: { _socket?: { setNoDelay(noDelay?: boolean): void; setKeepAlive?(enable?: boolean, initialDelay?: number): void } };
+  guacdClient?: { guacdConnection?: { setNoDelay(noDelay?: boolean): void } };
+  webSocket?: { _socket?: { setNoDelay(noDelay?: boolean): void } };
 }
 
 interface GuacServer {
@@ -124,7 +124,6 @@ const guacServer = new GuacamoleLite(
   },
   { host: config.GUACD_HOST, port: config.GUACD_PORT },
   {
-    maxInactivityTime: 0, // Disable aggressive 10s inactivity termination so slow or idle connections are never closed
     crypt: { cypher: 'AES-256-CBC', key: config.GUACAMOLE_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0') },
     // Use ERRORS (level 10). 'INFO' is invalid in guacamole-lite and causes NaN comparison
     // that triggers verbose console.log on every instruction/frame, blocking the Node event loop!
@@ -139,25 +138,13 @@ function guacInstruction(opcode: string, args: string[]): string {
 // The token issued by /vms/:id/connect carries a top-level `meta` block that
 // guacamole-lite preserves on the decrypted connectionSettings.
 guacServer.on('open', (connection) => {
-  // Ensure TCP_NODELAY and keepalive are enabled on both sockets for reliable transmission
+  // Ensure TCP_NODELAY is enabled on both sockets for zero keystroke buffering
   try {
     connection.guacdClient?.guacdConnection?.setNoDelay(true);
-    connection.guacdClient?.guacdConnection?.setKeepAlive?.(true, 10000);
     connection.webSocket?._socket?.setNoDelay(true);
-    connection.webSocket?._socket?.setKeepAlive?.(true, 10000);
   } catch (err) {
-    console.warn('[TCP_NODELAY] Failed to apply setNoDelay / setKeepAlive:', err);
+    console.warn('[TCP_NODELAY] Failed to apply setNoDelay:', err);
   }
-
-  // Send periodic nop instruction to client so background tabs and intermediate proxies never time out
-  const keepAliveInterval = setInterval(() => {
-    try {
-      connection.send(guacInstruction('nop', []));
-    } catch {
-      clearInterval(keepAliveInterval);
-    }
-  }, 10000);
-  (connection as any)._keepAliveTimer = keepAliveInterval;
 
   const sessionId = connection.connectionSettings?.meta?.sessionId;
   sessionRegistry.bindDisconnect(sessionId, () => {
@@ -177,9 +164,6 @@ guacServer.on('open', (connection) => {
   });
 });
 guacServer.on('close', (connection) => {
-  if ((connection as any)._keepAliveTimer) {
-    clearInterval((connection as any)._keepAliveTimer);
-  }
   sessionRegistry.release(connection.connectionSettings?.meta?.sessionId);
 });
 
