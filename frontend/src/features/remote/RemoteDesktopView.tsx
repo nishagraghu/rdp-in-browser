@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import Guacamole from 'guacamole-common-js';
-import api, { setAccessToken } from '../../api/client';
+import api from '../../api/client';
 import { AppDispatch, RootState } from '../../store';
 import { endVmConnection, startVmConnection, VM_CONNECTION_REVEAL_DELAY_MS } from '../../store/vmSlice';
 import { Badge } from '@/components/ui/badge';
@@ -445,18 +445,13 @@ export const RemoteDesktopView: React.FC = () => {
             clearTimeout(guacRetryTimerRef.current);
             guacRetryTimerRef.current = null;
           }
-          guacRetryCountRef.current = 999;
           try {
             clientRef.current?.disconnect();
           } catch {}
           clientRef.current = null;
-          setErrorMessage('You have been logged out by an administrator.');
-          setConnectionStatus('error');
-          toast.error('You have been logged out by an administrator.');
-          setAccessToken(null);
-          setTimeout(() => {
-            window.location.href = '/login?reason=admin_logout';
-          }, 1200);
+          setErrorMessage('Your remote desktop session was ended by an administrator.');
+          setConnectionStatus('disconnected');
+          toast.warning('Your remote desktop session was ended by an administrator.');
         };
 
         tunnel.onerror = (status: Guacamole.Status) => {
@@ -835,10 +830,7 @@ export const RemoteDesktopView: React.FC = () => {
   };
 
   const handleReconnect = () => {
-    if (isAdminLoggedOutRef.current) {
-      window.location.href = '/login?reason=admin_logout';
-      return;
-    }
+    isAdminLoggedOutRef.current = false;
     reconnectSession();
   };
 
@@ -1305,15 +1297,9 @@ export const RemoteDesktopView: React.FC = () => {
               </p> */}
             </div>
             <div className="flex space-x-3 pt-2">
-              {isAdminLoggedOutRef.current ? (
-                <Button onClick={() => { window.location.href = '/login?reason=admin_logout'; }} className="font-semibold rounded-xl text-sm">
-                  Return to Login
-                </Button>
-              ) : (
-                <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
-                  Retry Connection
-                </Button>
-              )}
+              <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
+                Retry Connection
+              </Button>
               <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
                 Return to Dashboard
               </Button>
@@ -1328,12 +1314,12 @@ export const RemoteDesktopView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xl font-bold">
-                {isAdminLoggedOutRef.current ? 'Logged Out by Administrator' : 'Remote Session Disconnected'}
+                {isAdminLoggedOutRef.current ? 'Session Ended by Administrator' : 'Remote Session Disconnected'}
               </h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto mt-2">
-                {isAdminLoggedOutRef.current
-                  ? 'Your session was ended by an administrator and you have been signed out.'
-                  : 'The connection to the remote desktop was closed.'}
+                {errorMessage || (isAdminLoggedOutRef.current
+                  ? 'Your remote desktop session was ended by an administrator.'
+                  : 'The connection to the remote desktop was closed.')}
               </p>
               {networkStatus.isOffline ? (
                 <p className="text-xs text-amber-500 font-medium max-w-md mx-auto mt-2 flex items-center justify-center gap-1.5">
@@ -1348,15 +1334,9 @@ export const RemoteDesktopView: React.FC = () => {
               ) : null}
             </div>
             <div className="flex space-x-3 pt-2">
-              {isAdminLoggedOutRef.current ? (
-                <Button onClick={() => { window.location.href = '/login?reason=admin_logout'; }} className="font-semibold rounded-xl text-sm">
-                  Return to Login
-                </Button>
-              ) : (
-                <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
-                  Reconnect
-                </Button>
-              )}
+              <Button onClick={handleReconnect} className="font-semibold rounded-xl text-sm">
+                Reconnect
+              </Button>
               <Button variant="secondary" onClick={goToDashboard} className="font-semibold rounded-xl text-sm">
                 Return to Dashboard
               </Button>

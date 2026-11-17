@@ -55,15 +55,39 @@ export const fetchCurrentUser = createAsyncThunk(
           return rejectWithValue('Unauthenticated');
         }
       }
-      const res = await api.get('/auth/me');
-      return res.data.data;
-    } catch (err: unknown) {
-      const error = err as { response?: { status?: number; data?: { error?: string; code?: string } } };
-      // Only clear token if the server actively rejected authentication (401 or 403)
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        setAccessToken(null);
+
+      try {
+        const res = await api.get('/auth/me');
+        return res.data.data;
+      } catch (meErr: any) {
+        // If /auth/me failed with 401, attempt token refresh before logging out
+        if (meErr.response?.status === 401) {
+          try {
+            const refreshRes = await api.post('/auth/refresh');
+            if (refreshRes.data?.success && refreshRes.data?.data?.accessToken) {
+              const newToken = refreshRes.data.data.accessToken;
+              setAccessToken(newToken);
+              const retryRes = await api.get('/auth/me', {
+                headers: { Authorization: `Bearer ${newToken}` },
+              });
+              return retryRes.data.data;
+            }
+          } catch (refErr: any) {
+            if (refErr.response?.status === 401 || refErr.response?.status === 403) {
+              setAccessToken(null);
+            }
+            return rejectWithValue('Unauthenticated');
+          }
+        }
+
+        // Only clear token if server actively returned 401/403
+        if (meErr.response?.status === 401 || meErr.response?.status === 403) {
+          setAccessToken(null);
+        }
+        return rejectWithValue(meErr.response?.data?.error || 'Unauthenticated');
       }
-      return rejectWithValue(error.response?.data?.error || 'Unauthenticated');
+    } catch (err: unknown) {
+      return rejectWithValue('Unauthenticated');
     }
   }
 );
