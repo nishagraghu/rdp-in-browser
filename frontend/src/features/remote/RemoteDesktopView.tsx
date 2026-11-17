@@ -15,13 +15,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Monitor, 
-  ArrowLeft, 
+import {
+  Monitor,
+  ArrowLeft,
   Maximize2,
   Minimize2,
-  RefreshCw, 
-  Power, 
+  RefreshCw,
+  Power,
   AlertTriangle,
   ZoomIn,
   ZoomOut,
@@ -110,7 +110,7 @@ export const RemoteDesktopView: React.FC = () => {
     if (clientRef.current) {
       try {
         clientRef.current.disconnect();
-      } catch {}
+      } catch { }
       clientRef.current = null;
     }
     setConnectionStatus('connecting');
@@ -272,7 +272,7 @@ export const RemoteDesktopView: React.FC = () => {
       for (const keysym of modifiers) {
         try {
           client.sendKeyEvent(0, keysym);
-        } catch {}
+        } catch { }
       }
     }
   }, []);
@@ -410,9 +410,9 @@ export const RemoteDesktopView: React.FC = () => {
       try {
         const { width: initialWidth, height: initialHeight } = getViewportSize(true);
 
-        const res = await api.post(`/vms/${vmId}/connect`, { 
-          width: initialWidth, 
-          height: initialHeight 
+        const res = await api.post(`/vms/${vmId}/connect`, {
+          width: initialWidth,
+          height: initialHeight
         });
 
         if (cancelled) return;
@@ -447,7 +447,7 @@ export const RemoteDesktopView: React.FC = () => {
           }
           try {
             clientRef.current?.disconnect();
-          } catch {}
+          } catch { }
           clientRef.current = null;
           setErrorMessage('Your remote desktop session was ended by an administrator.');
           setConnectionStatus('disconnected');
@@ -672,17 +672,17 @@ export const RemoteDesktopView: React.FC = () => {
 
         const keyboardTarget = displayRef.current;
         let keyboard: Guacamole.Keyboard | null = null;
-        
+
         if (keyboardTarget) {
           keyboardTarget.tabIndex = -1;
           keyboardTarget.style.outline = 'none';
           keyboardTarget.focus();
-          
+
           keyboardTarget.addEventListener('mousedown', () => keyboardTarget.focus());
-          
+
           keyboard = new Guacamole.Keyboard(keyboardTarget);
           keyboardRef.current = keyboard;
-          
+
           keyboard.onkeydown = (keysym: number) => {
             if (clientRef.current) clientRef.current.sendKeyEvent(1, keysym);
           };
@@ -750,13 +750,13 @@ export const RemoteDesktopView: React.FC = () => {
       if (keyboardRef.current) {
         try {
           keyboardRef.current.reset();
-        } catch {}
+        } catch { }
         keyboardRef.current = null;
       }
       if (clientRef.current) {
         try {
           clientRef.current.disconnect();
-        } catch {}
+        } catch { }
         clientRef.current = null;
       }
       if (displayRef.current) {
@@ -882,7 +882,7 @@ export const RemoteDesktopView: React.FC = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
+
     const fileList = Array.from(files);
     for (const file of fileList) {
       const originalSize = file.size;
@@ -925,7 +925,7 @@ export const RemoteDesktopView: React.FC = () => {
         toast.error(`Upload failed for "${file.name}": ${errorMsg}`, { id: toastId });
       }
     }
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -1104,8 +1104,8 @@ export const RemoteDesktopView: React.FC = () => {
                 connectionStatus === 'connected'
                   ? 'bg-emerald-500 hover:bg-emerald-600'
                   : connectionStatus === 'connecting'
-                  ? 'bg-amber-500 text-white animate-pulse'
-                  : ''
+                    ? 'bg-amber-500 text-white animate-pulse'
+                    : ''
               }
             >
               {connectionStatus.toUpperCase()}
@@ -1130,9 +1130,8 @@ export const RemoteDesktopView: React.FC = () => {
             <div className="flex items-center bg-muted/90 p-0.5 border border-border/60 rounded-lg">
               <button
                 onClick={handleFitScreen}
-                className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${
-                  scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors ${scaleMode === 'fit' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 title="Fit entire desktop to screen"
               >
                 <Scan className="w-3.5 h-3.5" />
@@ -1140,9 +1139,8 @@ export const RemoteDesktopView: React.FC = () => {
               </button>
               <button
                 onClick={handleNative100}
-                className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
-                  scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                }`}
+                className={`px-2 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${scaleMode === '100%' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 title="1:1 Native Resolution"
               >
                 1:1
@@ -1264,12 +1262,11 @@ export const RemoteDesktopView: React.FC = () => {
       )}
 
       {/* Main Remote Display Viewport Container */}
-      <main 
+      <main
         ref={containerRef}
         onMouseDown={focusDisplay}
-        className={`flex-1 min-h-0 w-full bg-black relative flex items-center justify-center ${
-          scaleMode === 'fit' ? 'overflow-hidden' : 'overflow-auto'
-        }`}
+        className={`flex-1 min-h-0 w-full bg-black relative flex items-center justify-center ${scaleMode === 'fit' ? 'overflow-hidden' : 'overflow-auto'
+          }`}
       >
         {connectionStatus === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-20 p-6 space-y-4 text-center">
@@ -1345,7 +1342,7 @@ export const RemoteDesktopView: React.FC = () => {
         )}
 
         {/* Scaled Display Container */}
-        <div 
+        <div
           style={{
             width: fillViewport ? '100%' : scaledWidth > 0 ? `${scaledWidth}px` : '100%',
             height: fillViewport ? '100%' : scaledHeight > 0 ? `${scaledHeight}px` : '100%',
@@ -1355,7 +1352,7 @@ export const RemoteDesktopView: React.FC = () => {
           className={fillViewport ? '' : 'shadow-2xl rounded-sm'}
         >
           {/* Guacamole internal canvas mount target */}
-          <div 
+          <div
             ref={displayRef}
             style={{
               position: 'absolute',

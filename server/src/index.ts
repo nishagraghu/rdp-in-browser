@@ -172,7 +172,7 @@ guacServer.on('open', (connection) => {
     setTimeout(() => {
       try {
         connection.close();
-      } catch {}
+      } catch { }
     }, 50);
   });
 });
