@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import { generateSecret, generateURI, verifySync } from 'otplib';
+import QRCode from 'qrcode';
 import { prisma } from '../../db/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt';
@@ -37,6 +39,8 @@ function toUserDto(user: {
   role: string;
   isActive: boolean;
   email2faEnabled: boolean;
+  totpEnabled?: boolean;
+  totpConfirmed?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -48,6 +52,8 @@ function toUserDto(user: {
     role: user.role,
     isActive: user.isActive,
     email2faEnabled: user.email2faEnabled,
+    totpEnabled: Boolean(user.totpEnabled),
+    totpConfirmed: Boolean(user.totpConfirmed),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
@@ -277,6 +283,82 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Google Authenticator (TOTP) 2FA
+    if (user.totpEnabled) {
+      try {
+        let secret = user.totpSecret;
+        if (!secret) {
+          secret = generateSecret();
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { totpSecret: secret, totpConfirmed: false },
+          });
+        }
+
+        const challengeToken = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + TWO_FA_TTL_MS);
+
+        await prisma.twoFactorCode.deleteMany({ where: { userId: user.id } });
+        await prisma.twoFactorCode.create({
+          data: {
+            userId: user.id,
+            codeHash: 'TOTP',
+            challengeToken,
+            expiresAt,
+          },
+        });
+
+        await createAuditLog({
+          userId: user.id,
+          userName: user.username,
+          action: AuditAction.TWO_FACTOR_CHALLENGE,
+          details: user.totpConfirmed
+            ? 'Google Authenticator code challenge initiated'
+            : 'Google Authenticator initial QR setup initiated',
+          ipAddress: req.ip,
+        });
+
+        if (!user.totpConfirmed) {
+          const otpauthUri = generateURI({
+            issuer: 'Cloudgoo',
+            label: user.username,
+            secret,
+          });
+          const qrCodeDataUrl = await QRCode.toDataURL(otpauthUri);
+
+          res.json({
+            success: true,
+            data: {
+              requires2FA: true,
+              twoFactorType: 'TOTP',
+              requiresTotpSetup: true,
+              challengeToken,
+              qrCodeDataUrl,
+              secret,
+              expiresInSeconds: Math.floor(TWO_FA_TTL_MS / 1000),
+            },
+          });
+          return;
+        }
+
+        res.json({
+          success: true,
+          data: {
+            requires2FA: true,
+            twoFactorType: 'TOTP',
+            requiresTotpSetup: false,
+            challengeToken,
+            expiresInSeconds: Math.floor(TWO_FA_TTL_MS / 1000),
+          },
+        });
+        return;
+      } catch (err) {
+        console.error('TOTP challenge error:', err);
+        res.status(500).json({ success: false, error: 'Failed to initiate Google Authenticator verification' });
+        return;
+      }
+    }
+
     // Email 2FA: require OTP before issuing session tokens
     if (user.email2faEnabled) {
       try {
@@ -370,7 +452,7 @@ export async function verifyTwoFactor(req: Request, res: Response): Promise<void
     }
 
     const user = challenge.user;
-    if (!user.isActive || !user.email2faEnabled) {
+    if (!user.isActive || (!user.email2faEnabled && !user.totpEnabled)) {
       await prisma.twoFactorCode.delete({ where: { id: challenge.id } });
       res.status(403).json({
         success: false,
@@ -379,26 +461,65 @@ export async function verifyTwoFactor(req: Request, res: Response): Promise<void
       return;
     }
 
-    if (hashOtp(normalizedCode) !== challenge.codeHash) {
-      await prisma.twoFactorCode.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } },
-      });
-      await createAuditLog({
-        userId: user.id,
-        userName: user.username,
-        action: AuditAction.TWO_FACTOR_FAILURE,
-        details: 'Invalid 2FA verification code provided',
-        ipAddress: req.ip,
-      });
-      const remaining = TWO_FA_MAX_ATTEMPTS - challenge.attempts - 1;
-      res.status(401).json({
-        success: false,
-        error: remaining > 0
-          ? `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
-          : 'Invalid verification code. Please log in again.',
-      });
-      return;
+    if (challenge.codeHash === 'TOTP') {
+      if (!user.totpSecret) {
+        res.status(400).json({ success: false, error: 'Google Authenticator secret not configured. Please log in again.' });
+        return;
+      }
+
+      const verifyResult = verifySync({ token: normalizedCode, secret: user.totpSecret });
+      if (!verifyResult || !verifyResult.valid) {
+        await prisma.twoFactorCode.update({
+          where: { id: challenge.id },
+          data: { attempts: { increment: 1 } },
+        });
+        await createAuditLog({
+          userId: user.id,
+          userName: user.username,
+          action: AuditAction.TWO_FACTOR_FAILURE,
+          details: 'Invalid Google Authenticator code provided',
+          ipAddress: req.ip,
+        });
+        const remaining = TWO_FA_MAX_ATTEMPTS - challenge.attempts - 1;
+        res.status(401).json({
+          success: false,
+          error: remaining > 0
+            ? `Invalid authenticator code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+            : 'Invalid authenticator code. Please log in again.',
+        });
+        return;
+      }
+
+      // Valid TOTP! Mark totpConfirmed if this was first setup
+      if (!user.totpConfirmed) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { totpConfirmed: true },
+        });
+        user.totpConfirmed = true;
+      }
+    } else {
+      if (hashOtp(normalizedCode) !== challenge.codeHash) {
+        await prisma.twoFactorCode.update({
+          where: { id: challenge.id },
+          data: { attempts: { increment: 1 } },
+        });
+        await createAuditLog({
+          userId: user.id,
+          userName: user.username,
+          action: AuditAction.TWO_FACTOR_FAILURE,
+          details: 'Invalid 2FA verification code provided',
+          ipAddress: req.ip,
+        });
+        const remaining = TWO_FA_MAX_ATTEMPTS - challenge.attempts - 1;
+        res.status(401).json({
+          success: false,
+          error: remaining > 0
+            ? `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+            : 'Invalid verification code. Please log in again.',
+        });
+        return;
+      }
     }
 
     await prisma.twoFactorCode.delete({ where: { id: challenge.id } });
@@ -449,8 +570,16 @@ export async function resendTwoFactor(req: Request, res: Response): Promise<void
       include: { user: true },
     });
 
-    if (!existing || !existing.user.isActive || !existing.user.email2faEnabled) {
+    if (!existing || !existing.user.isActive || (!existing.user.email2faEnabled && !existing.user.totpEnabled)) {
       res.status(401).json({ success: false, error: 'Invalid or expired verification session. Please log in again.' });
+      return;
+    }
+
+    if (existing.codeHash === 'TOTP') {
+      res.status(400).json({
+        success: false,
+        error: 'Code resend is not applicable for Google Authenticator. Please check your Authenticator app for the current code.',
+      });
       return;
     }
 
@@ -531,6 +660,8 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
         role: true,
         isActive: true,
         email2faEnabled: true,
+        totpEnabled: true,
+        totpConfirmed: true,
         createdAt: true,
         updatedAt: true,
       },

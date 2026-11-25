@@ -24,6 +24,10 @@ import {
   Lock,
   ShieldCheck,
   User,
+  QrCode,
+  Smartphone,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -59,6 +63,7 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [isResending, setIsResending] = useState(false);
+  const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,9 +113,19 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleCopySecret = () => {
+    if (twoFactorPending?.secret) {
+      navigator.clipboard.writeText(twoFactorPending.secret);
+      setHasCopiedKey(true);
+      toast.success('Authenticator key copied to clipboard');
+      setTimeout(() => setHasCopiedKey(false), 2500);
+    }
+  };
+
   const handleBackToLogin = () => {
     dispatch(clearTwoFactorPending());
     setVerificationCode('');
+    setHasCopiedKey(false);
   };
 
   return (
@@ -168,7 +183,7 @@ export const LoginPage: React.FC = () => {
 
       {/* Right panel — login / 2FA form */}
       <section className="relative flex flex-1 flex-col items-center justify-center bg-[#eef4f9] px-4 py-12 sm:px-8 lg:w-1/2 lg:py-14">
-        <div className="relative w-full max-w-[400px]">
+        <div className={`relative w-full transition-all duration-200 ${twoFactorPending?.requiresTotpSetup ? 'max-w-[460px]' : 'max-w-[400px]'}`}>
           <div className="relative rounded-2xl border border-white/80 bg-white px-6 py-8 shadow-[0_8px_40px_rgba(15,40,80,0.08)] sm:px-8 sm:py-10">
             {isLoggingIn && (
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-2xl bg-white/90 backdrop-blur-sm">
@@ -186,11 +201,27 @@ export const LoginPage: React.FC = () => {
                 className="mb-5 h-20 w-auto max-w-[260px] object-contain sm:h-24"
               />
               <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                {twoFactorPending ? 'Enter verification code' : 'Log in to your account'}
+                {twoFactorPending
+                  ? twoFactorPending.twoFactorType === 'TOTP'
+                    ? twoFactorPending.requiresTotpSetup
+                      ? 'Set Up Authenticator'
+                      : 'Google Authenticator'
+                    : 'Enter verification code'
+                  : 'Log in to your account'}
               </h2>
               {twoFactorPending && (
                 <p className="mt-2 text-xs text-slate-500 sm:text-sm">
-                  A code was sent to <span className="font-medium text-slate-700">{twoFactorPending.emailHint}</span>
+                  {twoFactorPending.twoFactorType === 'TOTP' ? (
+                    twoFactorPending.requiresTotpSetup ? (
+                      'Scan this QR code with Google Authenticator or enter the secret key manually.'
+                    ) : (
+                      'Enter the 6-digit verification code from your Google Authenticator app.'
+                    )
+                  ) : (
+                    <>
+                      A code was sent to <span className="font-medium text-slate-700">{twoFactorPending.emailHint}</span>
+                    </>
+                  )}
                 </p>
               )}
             </div>
@@ -228,6 +259,60 @@ export const LoginPage: React.FC = () => {
 
             {twoFactorPending ? (
               <form onSubmit={handleVerifySubmit} className="space-y-4">
+                {twoFactorPending.twoFactorType === 'TOTP' && twoFactorPending.requiresTotpSetup && twoFactorPending.qrCodeDataUrl && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-center">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-700">
+                      <QrCode className="h-4 w-4 text-[#1a3358]" />
+                      Scan QR Code in Google Authenticator
+                    </div>
+                    
+                    <div className="inline-block rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                      <img
+                        src={twoFactorPending.qrCodeDataUrl}
+                        alt="Google Authenticator QR Code"
+                        className="h-40 w-40 object-contain"
+                      />
+                    </div>
+
+                    {twoFactorPending.secret && (
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs">
+                        <div className="truncate pr-2">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                            Or enter secret key manually
+                          </span>
+                          <span className="font-mono text-xs font-bold tracking-wider text-slate-800 select-all">
+                            {twoFactorPending.secret}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCopySecret}
+                          className="h-7 shrink-0 px-2 text-xs text-slate-600 hover:text-slate-900"
+                          title="Copy key"
+                        >
+                          {hasCopiedKey ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500">
+                      Enter the 6-digit code generated by the app below to activate:
+                    </p>
+                  </div>
+                )}
+
+                {twoFactorPending.twoFactorType === 'TOTP' && !twoFactorPending.requiresTotpSetup && (
+                  <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-600">
+                    <Smartphone className="h-4 w-4 text-[#1a3358]" />
+                    <span>Open your Google Authenticator app and enter the code</span>
+                  </div>
+                )}
+
                 <div className="relative">
                   <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
@@ -241,7 +326,7 @@ export const LoginPage: React.FC = () => {
                     disabled={isLoggingIn}
                     value={verificationCode}
                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="h-11 rounded-lg border-slate-200 bg-white pl-10 text-center text-lg tracking-[0.35em] placeholder:tracking-normal placeholder:text-slate-400 focus-visible:ring-[#1a3358]/30"
+                    className="h-11 rounded-lg border-slate-200 bg-white pl-10 text-center text-lg font-mono tracking-[0.35em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus-visible:ring-[#1a3358]/30"
                   />
                 </div>
 
@@ -250,7 +335,11 @@ export const LoginPage: React.FC = () => {
                   disabled={isLoggingIn || verificationCode.length !== 6}
                   className="mt-2 h-11 w-full rounded-lg bg-[#1a3358] text-sm font-semibold text-white hover:bg-[#152a4a]"
                 >
-                  {isLoggingIn ? 'Verifying...' : 'Verify & continue'}
+                  {isLoggingIn
+                    ? 'Verifying...'
+                    : twoFactorPending.requiresTotpSetup
+                      ? 'Verify & Complete Setup'
+                      : 'Verify & Continue'}
                 </Button>
 
                 <div className="flex items-center justify-between gap-2 pt-1">
@@ -263,14 +352,16 @@ export const LoginPage: React.FC = () => {
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Back to login
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={isLoggingIn || isResending}
-                    className="text-xs font-medium text-[#1a3358] hover:underline disabled:opacity-50"
-                  >
-                    {isResending ? 'Sending...' : 'Resend code'}
-                  </button>
+                  {twoFactorPending.twoFactorType !== 'TOTP' && (
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={isLoggingIn || isResending}
+                      className="text-xs font-medium text-[#1a3358] hover:underline disabled:opacity-50"
+                    >
+                      {isResending ? 'Sending...' : 'Resend code'}
+                    </button>
+                  )}
                 </div>
               </form>
             ) : (

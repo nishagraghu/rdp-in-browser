@@ -4,7 +4,11 @@ import { UserDto } from '@rdp/shared';
 
 export interface TwoFactorPending {
   challengeToken: string;
-  emailHint: string;
+  emailHint?: string;
+  twoFactorType?: 'EMAIL' | 'TOTP';
+  requiresTotpSetup?: boolean;
+  qrCodeDataUrl?: string;
+  secret?: string;
   expiresInSeconds: number;
 }
 
@@ -94,7 +98,16 @@ export const fetchCurrentUser = createAsyncThunk(
 
 export type LoginResult =
   | { kind: 'authenticated'; user: UserDto }
-  | { kind: 'requires2FA'; challengeToken: string; emailHint: string; expiresInSeconds: number };
+  | {
+      kind: 'requires2FA';
+      challengeToken: string;
+      emailHint?: string;
+      twoFactorType?: 'EMAIL' | 'TOTP';
+      requiresTotpSetup?: boolean;
+      qrCodeDataUrl?: string;
+      secret?: string;
+      expiresInSeconds: number;
+    };
 
 export const loginUser = createAsyncThunk(
   'auth/loginUser',
@@ -110,7 +123,11 @@ export const loginUser = createAsyncThunk(
         return {
           kind: 'requires2FA' as const,
           challengeToken: data.challengeToken as string,
-          emailHint: (data.emailHint as string) || '***',
+          emailHint: (data.emailHint as string) || undefined,
+          twoFactorType: (data.twoFactorType as 'EMAIL' | 'TOTP') || 'EMAIL',
+          requiresTotpSetup: Boolean(data.requiresTotpSetup),
+          qrCodeDataUrl: (data.qrCodeDataUrl as string) || undefined,
+          secret: (data.secret as string) || undefined,
           expiresInSeconds: (data.expiresInSeconds as number) || 600,
         };
       }
@@ -223,6 +240,10 @@ const authSlice = createSlice({
           state.twoFactorPending = {
             challengeToken: action.payload.challengeToken,
             emailHint: action.payload.emailHint,
+            twoFactorType: action.payload.twoFactorType,
+            requiresTotpSetup: action.payload.requiresTotpSetup,
+            qrCodeDataUrl: action.payload.qrCodeDataUrl,
+            secret: action.payload.secret,
             expiresInSeconds: action.payload.expiresInSeconds,
           };
         }

@@ -8,6 +8,8 @@ export interface UserDto {
   role: UserRole;
   isActive: boolean;
   email2faEnabled: boolean;
+  totpEnabled: boolean;
+  totpConfirmed: boolean;
   createdAt: string;
   updatedAt: string;
   _count?: {

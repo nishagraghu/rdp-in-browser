@@ -13,6 +13,8 @@ import {
   AlertCircle,
   UserX,
   UserCheck,
+  QrCode,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -46,6 +48,7 @@ export const UserManagement: React.FC = () => {
     password: string;
     role: UserRole;
     isActive: boolean;
+    totpEnabled: boolean;
   }>({
     name: '',
     email: '',
@@ -53,6 +56,7 @@ export const UserManagement: React.FC = () => {
     password: '',
     role: UserRole.USER,
     isActive: true,
+    totpEnabled: false,
   });
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -68,6 +72,7 @@ export const UserManagement: React.FC = () => {
       password: '',
       role: UserRole.USER,
       isActive: true,
+      totpEnabled: false,
     });
     setModalError(null);
   };
@@ -86,6 +91,7 @@ export const UserManagement: React.FC = () => {
       password: '',
       role: user.role,
       isActive: user.isActive,
+      totpEnabled: Boolean(user.totpEnabled),
     });
     setModalError(null);
   };
@@ -100,6 +106,7 @@ export const UserManagement: React.FC = () => {
         email: formData.email,
         role: formData.role,
         isActive: formData.isActive,
+        totpEnabled: formData.totpEnabled,
       };
       if (formData.password) payload.password = formData.password;
 
@@ -109,6 +116,8 @@ export const UserManagement: React.FC = () => {
           toast.success(`${editingUser.username} disabled and logged out`);
         } else if (!editingUser.isActive && formData.isActive) {
           toast.success(`${editingUser.username} enabled`);
+        } else {
+          toast.success(`User ${editingUser.username} updated successfully`);
         }
         setEditingUser(null);
       } else {
@@ -117,6 +126,7 @@ export const UserManagement: React.FC = () => {
     } else {
       const res = await dispatch(createUser(formData));
       if (createUser.fulfilled.match(res)) {
+        toast.success(`User ${formData.username} created successfully`);
         setIsAddModalOpen(false);
       } else {
         setModalError(res.payload as string);
@@ -151,11 +161,45 @@ export const UserManagement: React.FC = () => {
     if (updateUser.fulfilled.match(res)) {
       toast.success(
         nextEnabled
-          ? `Two-factor authentication enabled for ${user.username}`
-          : `Two-factor authentication disabled for ${user.username}`,
+          ? `Email 2FA enabled for ${user.username}`
+          : `Email 2FA disabled for ${user.username}`,
       );
     } else {
       toast.error((res.payload as string) || 'Failed to update 2FA setting');
+    }
+  };
+
+  const handleToggleGoogleAuth = async (user: UserDto) => {
+    const nextEnabled = !user.totpEnabled;
+    const res = await dispatch(
+      updateUser({ id: user.id, data: { totpEnabled: nextEnabled } })
+    );
+    if (updateUser.fulfilled.match(res)) {
+      toast.success(
+        nextEnabled
+          ? `Google Authenticator enabled for ${user.username}. A new QR code will be presented on next login.`
+          : `Google Authenticator disabled for ${user.username}. Old authenticator tokens invalidated.`
+      );
+    } else {
+      toast.error((res.payload as string) || 'Failed to update Google Authenticator setting');
+    }
+  };
+
+  const handleResetGoogleAuth = async (user: UserDto) => {
+    if (
+      !window.confirm(
+        `Reset Google Authenticator for ${user.username}?\n\nTheir existing Authenticator entry will stop working immediately, and they will be prompted to scan a new QR code on their next login.`
+      )
+    ) {
+      return;
+    }
+    const res = await dispatch(
+      updateUser({ id: user.id, data: { resetTotp: true } })
+    );
+    if (updateUser.fulfilled.match(res)) {
+      toast.success(`Google Authenticator reset for ${user.username}. New QR code will be required on next login.`);
+    } else {
+      toast.error((res.payload as string) || 'Failed to reset Google Authenticator');
     }
   };
 
@@ -251,7 +295,8 @@ export const UserManagement: React.FC = () => {
                   <TableHead>User Details</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>2FA</TableHead>
+                  <TableHead>Email 2FA</TableHead>
+                  <TableHead>Google Auth</TableHead>
                   <TableHead>VM Count</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -297,8 +342,8 @@ export const UserManagement: React.FC = () => {
                             }}
                             title={
                               u.email2faEnabled
-                                ? 'Disable two-factor authentication'
-                                : 'Enable two-factor authentication'
+                                ? 'Disable email two-factor authentication'
+                                : 'Enable email two-factor authentication'
                             }
                           />
                           <span
@@ -308,6 +353,51 @@ export const UserManagement: React.FC = () => {
                           >
                             {u.email2faEnabled ? 'On' : 'Off'}
                           </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={Boolean(u.totpEnabled)}
+                            onCheckedChange={() => {
+                              void handleToggleGoogleAuth(u);
+                            }}
+                            title={
+                              u.totpEnabled
+                                ? 'Disable Google Authenticator (TOTP)'
+                                : 'Enable Google Authenticator (TOTP)'
+                            }
+                          />
+                          {u.totpEnabled ? (
+                            <div className="flex items-center gap-1.5">
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] font-semibold px-1.5 py-0 ${
+                                  u.totpConfirmed
+                                    ? 'text-emerald-600 border-emerald-300 bg-emerald-50'
+                                    : 'text-amber-600 border-amber-300 bg-amber-50'
+                                }`}
+                                title={
+                                  u.totpConfirmed
+                                    ? 'Configured and active in Google Authenticator app'
+                                    : 'Pending QR code scan on next login'
+                                }
+                              >
+                                {u.totpConfirmed ? 'Active' : 'Pending Scan'}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-slate-400 hover:text-amber-600"
+                                onClick={() => void handleResetGoogleAuth(u)}
+                                title="Reset key & force new QR code on next login"
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground font-medium">Off</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
@@ -471,6 +561,54 @@ export const UserManagement: React.FC = () => {
                 ) : null}
               </div>
             )}
+
+            <div className="rounded-lg border p-3 space-y-2 bg-slate-50/50">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5 pr-2">
+                  <Label htmlFor="totpEnabled" className="text-sm font-semibold flex items-center gap-1.5 cursor-pointer">
+                    <QrCode className="h-4 w-4 text-primary" />
+                    Google Authenticator (TOTP 2FA)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {editingUser
+                      ? formData.totpEnabled
+                        ? editingUser.totpConfirmed
+                          ? 'Active — user must enter code from Authenticator app on login.'
+                          : 'Pending — user will be asked to scan a new QR code on next login.'
+                        : 'Optional. When turned on, user must scan a QR code to configure their app.'
+                      : 'Optional. If enabled, user will be prompted with a QR code on first login.'}
+                  </p>
+                </div>
+                <Switch
+                  id="totpEnabled"
+                  checked={formData.totpEnabled}
+                  onCheckedChange={(checked) => setFormData({ ...formData, totpEnabled: checked })}
+                />
+              </div>
+
+              {editingUser && editingUser.totpEnabled && formData.totpEnabled && (
+                <div className="pt-2 border-t flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    Status: <strong className={editingUser.totpConfirmed ? 'text-emerald-600' : 'text-amber-600'}>
+                      {editingUser.totpConfirmed ? 'Active (Configured)' : 'Pending Scan (Awaiting Setup)'}
+                    </strong>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                    onClick={() => {
+                      void handleResetGoogleAuth(editingUser);
+                      setEditingUser(null);
+                    }}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Reset Key (New QR Code)
+                  </Button>
+                </div>
+              )}
+            </div>
 
             <DialogFooter className="pt-4">
               <Button type="button" variant="outline" onClick={() => { setIsAddModalOpen(false); setEditingUser(null); }}>

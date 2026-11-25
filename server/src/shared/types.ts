@@ -8,6 +8,8 @@ export interface UserDto {
   role: UserRole;
   isActive: boolean;
   email2faEnabled: boolean;
+  totpEnabled: boolean;
+  totpConfirmed: boolean;
   createdAt: string;
   updatedAt: string;
   _count?: {
@@ -31,9 +33,13 @@ export interface SmtpSettingsDto {
 
 export interface TwoFactorChallengeData {
   requires2FA: true;
+  twoFactorType?: 'EMAIL' | 'TOTP';
+  requiresTotpSetup?: boolean;
   challengeToken: string;
-  emailHint: string;
+  emailHint?: string;
   expiresInSeconds: number;
+  qrCodeDataUrl?: string;
+  secret?: string;
 }
 
 export interface VmDto {

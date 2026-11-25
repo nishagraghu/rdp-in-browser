@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { generateSecret } from 'otplib';
 import { prisma } from '../../db/prisma';
 import { hashPassword } from '../../utils/password';
 import { createAuditLog } from '../../utils/auditLogger';
@@ -35,6 +36,8 @@ export async function getUsers(req: AuthenticatedRequest, res: Response): Promis
         role: true,
         isActive: true,
         email2faEnabled: true,
+        totpEnabled: true,
+        totpConfirmed: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -80,6 +83,8 @@ export async function getUserById(req: AuthenticatedRequest, res: Response): Pro
         role: true,
         isActive: true,
         email2faEnabled: true,
+        totpEnabled: true,
+        totpConfirmed: true,
         createdAt: true,
         updatedAt: true,
         assignments: {
@@ -166,6 +171,8 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const passwordHash = await hashPassword(password);
+    const totpEnabled = Boolean(req.body.totpEnabled);
+    const totpSecret = totpEnabled ? generateSecret() : null;
 
     const newUser = await prisma.user.create({
       data: {
@@ -175,6 +182,9 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
         passwordHash,
         role: assignedRole,
         isActive: true,
+        totpEnabled,
+        totpSecret,
+        totpConfirmed: false,
       },
       select: {
         id: true,
@@ -184,6 +194,8 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
         role: true,
         isActive: true,
         email2faEnabled: true,
+        totpEnabled: true,
+        totpConfirmed: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -220,7 +232,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
 export async function updateUser(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, email, role, isActive, password, email2faEnabled } = req.body;
+    const { name, email, role, isActive, password, email2faEnabled, totpEnabled, resetTotp } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
@@ -282,6 +294,23 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
       }
       updateData.email2faEnabled = email2faEnabled;
     }
+    if (typeof totpEnabled === 'boolean' && isPrivileged) {
+      if (totpEnabled) {
+        updateData.totpEnabled = true;
+        updateData.totpSecret = generateSecret();
+        updateData.totpConfirmed = false;
+      } else {
+        updateData.totpEnabled = false;
+        updateData.totpSecret = null;
+        updateData.totpConfirmed = false;
+      }
+      await prisma.twoFactorCode.deleteMany({ where: { userId: id } });
+    } else if (resetTotp && isPrivileged) {
+      updateData.totpEnabled = true;
+      updateData.totpSecret = generateSecret();
+      updateData.totpConfirmed = false;
+      await prisma.twoFactorCode.deleteMany({ where: { userId: id } });
+    }
     if (password) {
       if (!validatePassword(password)) {
         res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
@@ -301,6 +330,8 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
         role: true,
         isActive: true,
         email2faEnabled: true,
+        totpEnabled: true,
+        totpConfirmed: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -332,6 +363,11 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
     }
     if (typeof email2faEnabled === 'boolean') {
       notes.push(email2faEnabled ? '2FA enabled' : '2FA disabled');
+    }
+    if (typeof totpEnabled === 'boolean') {
+      notes.push(totpEnabled ? 'Google Authenticator enabled (new secret generated)' : 'Google Authenticator disabled');
+    } else if (resetTotp) {
+      notes.push('Google Authenticator reset (new secret generated)');
     }
     const statusNote = notes.length ? ` (${notes.join('; ')})` : '';
 
