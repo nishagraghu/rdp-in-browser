@@ -4,7 +4,7 @@ import { hashPassword } from '../../utils/password';
 import { createAuditLog } from '../../utils/auditLogger';
 import { ensureUserDriveDirectory } from '../../utils/userDrive';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword } from '../../shared';
+import { UserRole, AuditAction, validateEmail, validateUsername, validatePassword, Permission, hasPermission } from '../../shared';
 
 export async function getUsers(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -59,6 +59,17 @@ export async function getUsers(req: AuthenticatedRequest, res: Response): Promis
 export async function getUserById(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { id } = req.params;
+
+    const isSelf = req.user?.userId === id;
+    const isPrivileged =
+      req.user?.role === UserRole.ADMIN ||
+      (req.user && hasPermission(req.user.role as UserRole, Permission.USER_READ));
+
+    if (!isSelf && !isPrivileged) {
+      res.status(403).json({ success: false, error: 'Access denied: insufficient permissions' });
+      return;
+    }
+
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -217,6 +228,16 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
+    const isSelfUpdate = req.user?.userId === id;
+    const isPrivileged =
+      req.user?.role === UserRole.ADMIN ||
+      (req.user && hasPermission(req.user.role as UserRole, Permission.USER_UPDATE));
+
+    if (!isSelfUpdate && !isPrivileged) {
+      res.status(403).json({ success: false, error: 'Access denied: insufficient permissions' });
+      return;
+    }
+
     if (typeof isActive === 'boolean' && isActive === false && req.user?.userId === id) {
       res.status(400).json({ success: false, error: 'You cannot disable your own account' });
       return;
@@ -230,12 +251,21 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
         res.status(400).json({ success: false, error: 'Invalid email format' });
         return;
       }
-      updateData.email = String(email).toLowerCase().trim();
+      const emailLower = String(email).toLowerCase().trim();
+      if (emailLower !== user.email) {
+        const existing = await prisma.user.findUnique({ where: { email: emailLower } });
+        if (existing && existing.id !== id) {
+          res.status(400).json({ success: false, error: 'Email is already in use by another account' });
+          return;
+        }
+      }
+      updateData.email = emailLower;
     }
-    if (role && Object.values(UserRole).includes(role as UserRole)) {
+    // Only privileged users can modify role or active status
+    if (role && isPrivileged && Object.values(UserRole).includes(role as UserRole)) {
       updateData.role = role;
     }
-    if (typeof isActive === 'boolean') {
+    if (typeof isActive === 'boolean' && isPrivileged) {
       updateData.isActive = isActive;
     }
     if (typeof email2faEnabled === 'boolean') {
@@ -288,7 +318,16 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const notes: string[] = [];
-    if (typeof isActive === 'boolean') {
+    if (password) {
+      notes.push('password reset');
+    }
+    if (name && name !== user.name) {
+      notes.push('name updated');
+    }
+    if (email && email !== user.email) {
+      notes.push('email updated');
+    }
+    if (typeof isActive === 'boolean' && isPrivileged) {
       notes.push(isActive ? 'account enabled' : 'account disabled — sessions revoked');
     }
     if (typeof email2faEnabled === 'boolean') {
@@ -300,7 +339,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
       userId: req.user?.userId,
       userName: req.user?.username,
       action: AuditAction.USER_UPDATE,
-      details: `Updated user profile for ${updated.username}${statusNote}`,
+      details: `${isSelfUpdate ? 'Self-updated' : 'Updated'} user profile for ${updated.username}${statusNote}`,
       ipAddress: req.ip,
     });
 
